@@ -74,7 +74,6 @@ graph TD
 | `analysis/fake_domain` | M7：偽冒域名 | dnstwist + URLScan.io |
 | `scoring/engine` | 七維度加權評分 | Python |
 | `report/generator` | HTML/PDF/CSV 報告產出 | Jinja2 + weasyprint |
-| `automation/scheduler` | Cron 排程管理 | Python + cron |
 | `automation/notifier` | Slack/Email/LINE 通知 | Python requests + smtplib |
 | `automation/diff` | 掃描差異比對 | Python |
 

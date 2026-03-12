@@ -204,19 +204,6 @@ def diff(dir1: str, dir2: str):
             click.echo(f"  ⚠️ {alert}")
 
 
-@cli.command()
-@click.option("--targets", default="config/targets.yaml", help="Targets config file")
-def schedule(targets: str):
-    """顯示 Cron 排程設定"""
-    from cypulse.automation.scheduler import load_targets, generate_crontab
-    target_list = load_targets(targets)
-    if not target_list:
-        click.echo("No targets configured.")
-        return
-    crontab = generate_crontab(target_list)
-    click.echo(crontab)
-
-
 def _find_previous_scan(output_dir: str, domain: str, current_dir: str) -> str | None:
     domain_dir = os.path.join(output_dir, domain)
     if not os.path.isdir(domain_dir):

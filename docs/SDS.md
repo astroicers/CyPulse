@@ -73,7 +73,6 @@
 |------|------|------|
 | 執行環境 | Docker（python:3.11-slim） | 封裝所有依賴，一鍵部署 |
 | 儲存 | JSON 檔案（host volume） | 無資料庫，簡單直接 |
-| 排程 | Host cron 或 container cron | 無需額外服務 |
 | 通知 | HTTP Webhook + SMTP | 無需 MQ |
 
 ---
@@ -89,7 +88,7 @@
 | `analysis` | 七大安全分析（7 個子模組） | `AnalysisModule.run(assets) → ModuleResult` | — | nuclei, nmap, checkdmarc, etc. |
 | `scoring` | 評分引擎 | `calculate_score(findings) → Score` | — | — |
 | `report` | 報告產出 | `generate_report(score, findings) → files` | — | Jinja2, weasyprint |
-| `automation` | 排程、diff、通知 | `schedule()`, `diff()`, `notify()` | scoring, report | cron, requests, smtplib |
+| `automation` | diff、通知 | `diff()`, `notify()` | scoring, report | requests, smtplib |
 | `models` | 資料模型定義 | dataclass definitions | — | — |
 | `utils` | 通用工具（subprocess、logging） | `run_cmd()`, `sanitize_domain()` | — | — |
 
@@ -277,7 +276,7 @@ templates/
 
 #### Automation 模組（cypulse/automation/）
 
-**職責：** Cron 排程、差異比對、通知發送
+**職責：** 差異比對、通知發送
 
 **核心介面：**
 
@@ -341,7 +340,6 @@ cypulse/
 │       └── static/
 ├── automation/
 │   ├── __init__.py
-│   ├── scheduler.py          # Cron 排程
 │   ├── diff.py               # 差異比對
 │   └── notifier.py           # Slack/Email/LINE
 ├── models/
@@ -364,7 +362,6 @@ tests/
 └── conftest.py               # pytest fixtures
 
 config/
-├── targets.yaml.example      # 多目標設定範本
 └── config.yaml.example       # API Key 等設定範本
 ```
 
@@ -488,7 +485,6 @@ data/example.com/2026-03-12T020000/
 
 - **入口點：** `cypulse`（setup.py console_scripts 或 `python -m cypulse`）
 - **設定檔：** `config/config.yaml`（API Key 等）
-- **目標設定：** `config/targets.yaml`（多 domain 管理）
 - **輸出目錄：** `data/`（可透過 `CYPULSE_OUTPUT_DIR` 環境變數覆蓋）
 
 ### 4.2 指令規格

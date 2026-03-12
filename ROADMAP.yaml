@@ -412,27 +412,26 @@ milestones:
           便於客戶自行處理。
 
   # ────────────────────────────────────────────
-  # M4：自動化排程 & 持續監控（Week 11–16）
+  # M4：自動化通知 & 差異比對（Week 11–16）
   # ────────────────────────────────────────────
   - id: M4
-    title: "自動化排程 & 持續監控"
+    title: "自動化通知 & 差異比對"
     target_date: 2026-07-02
     status: completed
 
     tasks:
       - id: T301
-        title: "Cron 自動排程掃描"
+        title: "Cron 自動排程掃描（已移除）"
         type: NEW_FEATURE
         priority: 1
         adr: null
         spec: null
-        srs_ref: FR-401
+        srs_ref: null
         depends_on: [T201]
-        status: completed
+        status: removed
         estimated_complexity: medium
         description: |
-          實作 Cron Job 設定，支援每週自動執行完整掃描，
-          多 Domain 目標管理（targets.yaml），掃描結果依日期儲存。
+          原 Cron 排程功能已移除。CyPulse 改為手動觸發掃描，不提供內建排程。
 
       - id: T302
         title: "差異比對與告警機制"
@@ -441,7 +440,7 @@ milestones:
         adr: null
         spec: null
         srs_ref: FR-402
-        depends_on: [T301]
+        depends_on: [T201]
         status: completed
         estimated_complexity: medium
         description: |
@@ -474,7 +473,7 @@ milestones:
         status: completed
         estimated_complexity: medium
         description: |
-          完善 README.md、docker-compose.yml、targets.yaml.example、
+          完善 README.md、docker-compose.yml、
           CONTRIBUTING.md。發布 v1.0 Release，附 Demo 報告截圖。
 
       - id: T305

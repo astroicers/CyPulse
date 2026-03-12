@@ -32,7 +32,6 @@
 | weasyprint + 字型 | 使用者自行安裝 | Image 預裝 + Noto Sans TC |
 | 掃描結果儲存 | `./data/` | Volume mount `./data/` |
 | 設定檔 | `config/config.yaml` | Volume mount 或環境變數 |
-| Cron 排程 | Host crontab | Container crontab 或 host cron |
 
 ### 1.3 環境變數清單
 
@@ -295,15 +294,6 @@ jobs:
 [SCAN COMPLETE] domain=example.com score=78 grade=C duration=1102s modules=7/7 findings=47
 ```
 
-### 4.3 Cron 排程監控
-
-透過 cron job 的 log 輸出監控排程執行狀態：
-
-```bash
-# crontab -e
-0 2 * * 0  docker-compose run --rm cypulse scan example.com >> /var/log/cypulse-cron.log 2>&1
-```
-
 ---
 
 ## 5. 災難復原（Disaster Recovery）
@@ -348,7 +338,6 @@ docker-compose up -d
 - [ ] Docker 20.10+ 已安裝
 - [ ] docker-compose v2 已安裝
 - [ ] `.env` 檔案已建立（至少 `ABUSEIPDB_API_KEY`）
-- [ ] `config/targets.yaml` 已設定目標 domain
 - [ ] `data/` 目錄存在且有寫入權限
 - [ ] 網路可連線至目標 domain
 - [ ] 已確認目標 domain 的掃描授權

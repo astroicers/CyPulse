@@ -22,9 +22,3 @@ class TestCLI:
         runner = CliRunner()
         result = runner.invoke(cli, ["scan", "not a domain!!!"])
         assert result.exit_code != 0
-
-    def test_schedule_no_config(self):
-        runner = CliRunner()
-        result = runner.invoke(cli, ["schedule", "--targets", "/nonexistent.yaml"])
-        assert result.exit_code == 0
-        assert "No targets" in result.output

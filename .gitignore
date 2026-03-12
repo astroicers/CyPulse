@@ -50,7 +50,6 @@ venv/
 # CyPulse
 data/
 config/config.yaml
-config/targets.yaml
 logs/
 
 # ASP

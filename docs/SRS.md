@@ -28,7 +28,6 @@ CyPulse 目標是以 100% 開源工具，建立完整的 EASM 資安曝險評級
 - 七維度加權評分演算法（0-100 分，A/B/C/D 等級）
 - 繁體中文 HTML / PDF 報告輸出
 - JSON / CSV 原始資料匯出
-- Cron 排程自動掃描
 - 差異比對告警與通知（Slack / Email / LINE）
 - Docker 容器化一鍵部署
 - GitHub 開源發布
@@ -68,7 +67,7 @@ CyPulse 目標是以 100% 開源工具，建立完整的 EASM 資安曝險評級
 |------|--------|------|----------|
 | 開發者 / 維護者 | CyPulse 開發團隊 | 全棧開發、測試、文件 | 全程 |
 | 資安分析師（目標使用者） | — | 使用 CyPulse 掃描與產出報告 | 需求、驗收 |
-| IT 管理員（目標使用者） | — | 部署 CyPulse、設定排程監控 | 部署、維護 |
+| IT 管理員（目標使用者） | — | 部署 CyPulse、差異比對監控 | 部署、維護 |
 | 開源社群貢獻者 | — | 模組擴充、Bug 回報、PR | 實作、維護 |
 
 ---
@@ -112,7 +111,6 @@ CyPulse 目標是以 100% 開源工具，建立完整的 EASM 資安曝險評級
 
 | ID | 需求描述 | 優先級 | 對應 ROADMAP | 驗收標準 |
 |----|----------|--------|--------------|----------|
-| FR-401 | 系統應支援 Cron 排程每週自動執行完整掃描，並依日期儲存結果 | Should Have | M4 | Cron 設定後可自動執行，歷史結果依日期歸檔 |
 | FR-402 | 系統應支援掃描結果差異比對，偵測新增/消失的風險項目 | Should Have | M4 | 比對兩次結果可正確輸出差異清單 |
 | FR-403 | 系統應支援 Slack / Email / LINE Notify 通知 | Nice to Have | M4 | Critical/High 告警成功送達至少一個通知管道 |
 
@@ -203,21 +201,19 @@ CyPulse 目標是以 100% 開源工具，建立完整的 EASM 資安曝險評級
 
 ---
 
-**US-401: 定期自動掃描**
+**US-401: 掃描差異比對與通知**
 
 - **As a** IT 管理員
-- **I want** 設定每週自動掃描公司所有 domain 並在發現新風險時收到通知
+- **I want** 在每次掃描後自動比對差異，並在發現新風險時收到通知
 - **So that** 我可以即時掌握公司外部攻擊面的變化
 
 **Acceptance Criteria:**
 
-- [ ] 可透過設定檔管理多個目標 domain
-- [ ] 支援 Cron 排程每週自動執行
 - [ ] 掃描結果差異比對可偵測新增風險
 - [ ] Critical/High 風險透過 Slack 或 Email 即時通知
 - [ ] 歷史結果依日期歸檔保存
 
-**Maps to:** FR-401, FR-402, FR-403 | Task: M4
+**Maps to:** FR-402, FR-403 | Task: M4
 
 ---
 
@@ -278,7 +274,7 @@ CyPulse 目標是以 100% 開源工具，建立完整的 EASM 資安曝險評級
 
 ### UC-201: 差異比對與告警
 
-**參與者：** IT 管理員、CyPulse Cron
+**參與者：** IT 管理員、CyPulse CLI
 
 **前置條件：** 至少有兩次掃描結果
 
@@ -286,7 +282,7 @@ CyPulse 目標是以 100% 開源工具，建立完整的 EASM 資安曝險評級
 
 #### 主要流程
 
-1. Cron Job 觸發自動掃描
+1. 使用者執行 `cypulse scan` 或 `cypulse diff`
 2. 掃描完成後，系統載入上次掃描結果
 3. 系統比對兩次結果，產出差異清單
 4. 若發現新 Critical/High 風險 → 發送通知
@@ -309,7 +305,6 @@ CyPulse 目標是以 100% 開源工具，建立完整的 EASM 資安曝險評級
 | `Findings` | 七大模組整合結果 | `data/<domain>/<timestamp>/findings.json` | JSON |
 | `Score` | 評分結果 | `data/<domain>/<timestamp>/score.json` | JSON |
 | `DiffReport` | 差異比對結果 | `data/<domain>/<timestamp>/diff.json` | JSON |
-| `TargetConfig` | 多目標設定 | `config/targets.yaml` | YAML |
 
 ### 7.2 ScanResult JSON Schema（簡化）
 
@@ -381,7 +376,6 @@ data/
 | `cypulse report <scan_dir>` | 以既有掃描結果產出報告 | `cypulse report data/example.com/2026-03-12T020000` |
 | `cypulse report <scan_dir> --format pdf` | 指定報告格式 | `cypulse report <dir> --format pdf` |
 | `cypulse diff <dir1> <dir2>` | 比較兩次掃描結果 | `cypulse diff <old_dir> <new_dir>` |
-| `cypulse schedule` | 顯示目前排程設定 | `cypulse schedule` |
 
 ### 8.2 CLI 輸出範例
 
@@ -478,7 +472,6 @@ Target: example.com
 | FR-302 | HTML 報告 | US-301 | T203 |
 | FR-303 | PDF 報告 | US-301 | T204 |
 | FR-304 | CSV 匯出 | US-301 | T205 |
-| FR-401 | Cron 排程 | US-401 | T301 |
 | FR-402 | 差異比對 | US-401 | T302 |
 | FR-403 | 通知整合 | US-401 | T303 |
 
