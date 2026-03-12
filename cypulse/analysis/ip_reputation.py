@@ -34,12 +34,28 @@ class IPReputationModule(AnalysisModule):
 
         api_key = os.environ.get("ABUSEIPDB_API_KEY", "")
 
+        if not api_key:
+            elapsed = time.time() - start
+            return ModuleResult(
+                module_id=self.module_id(),
+                module_name=self.module_name(),
+                score=0,
+                max_score=self.max_score(),
+                findings=[Finding(
+                    severity="info",
+                    title="AbuseIPDB API key not configured",
+                    description="ABUSEIPDB_API_KEY 未設定，IP 信譽檢查未執行",
+                )],
+                raw_data={},
+                execution_time=elapsed,
+                status="error",
+            )
+
         for ip in unique_ips:
-            if api_key:
-                result = self._check_abuseipdb(ip, api_key)
-                if result:
-                    findings.append(result)
-                    score = max(0, score - result.score_impact)
+            result = self._check_abuseipdb(ip, api_key)
+            if result:
+                findings.append(result)
+                score = max(0, score - result.score_impact)
 
         elapsed = time.time() - start
         return ModuleResult(
@@ -50,7 +66,7 @@ class IPReputationModule(AnalysisModule):
             findings=findings,
             raw_data={},
             execution_time=elapsed,
-            status="success" if api_key else "partial",
+            status="success",
         )
 
     def _check_abuseipdb(self, ip: str, api_key: str) -> Finding | None:

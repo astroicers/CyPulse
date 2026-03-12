@@ -27,6 +27,24 @@ class EmailSecurityModule(AnalysisModule):
 
         try:
             import checkdmarc
+        except ImportError as e:
+            logger.error("checkdmarc_import_failed", error=str(e))
+            return ModuleResult(
+                module_id=self.module_id(),
+                module_name=self.module_name(),
+                score=0,
+                max_score=self.max_score(),
+                findings=[Finding(
+                    severity="info",
+                    title="checkdmarc unavailable",
+                    description=f"checkdmarc 無法載入: {e}",
+                )],
+                raw_data={"error": str(e)},
+                execution_time=time.time() - start,
+                status="error",
+            )
+
+        try:
             result = checkdmarc.check_domains([assets.domain])
 
             if isinstance(result, list):
@@ -72,10 +90,14 @@ class EmailSecurityModule(AnalysisModule):
             return ModuleResult(
                 module_id=self.module_id(),
                 module_name=self.module_name(),
-                score=score,
+                score=0,
                 max_score=self.max_score(),
-                findings=findings,
-                raw_data={},
+                findings=[Finding(
+                    severity="info",
+                    title="checkdmarc execution failed",
+                    description=f"checkdmarc 執行失敗: {e}",
+                )],
+                raw_data={"error": str(e)},
                 execution_time=time.time() - start,
                 status="error",
             )

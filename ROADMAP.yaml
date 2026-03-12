@@ -489,3 +489,18 @@ milestones:
         description: |
           撰寫安裝指南、使用說明、模組擴充指南、
           API Key 設定說明、常見問題排除。
+
+      - id: T306
+        title: "Docker 環境完整驗證"
+        type: GENERAL
+        priority: 1
+        adr: null
+        spec: null
+        srs_ref: null
+        depends_on: [T304]
+        status: in_progress
+        estimated_complexity: medium
+        description: |
+          確保 docker-compose build 成功、所有 PD 工具（subfinder, httpx, nuclei, dnsx, naabu）
+          與系統工具（nmap, dnsrecon, testssl.sh, dnstwist）皆可在容器內執行。
+          驗證七大模組在 Docker 環境下正常運行且評分合理（非虛高）。

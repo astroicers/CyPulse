@@ -39,8 +39,16 @@ class DNSSecurityModule(AnalysisModule):
             score = max(0, score - 5)
 
         # Check zone transfer
+        status = "success"
         zone_transfer = self._check_zone_transfer(assets.domain)
-        if zone_transfer:
+        if zone_transfer is None:
+            status = "partial"
+            findings.append(Finding(
+                severity="info",
+                title="dnsrecon not installed",
+                description="dnsrecon 未安裝，Zone Transfer 檢查未執行",
+            ))
+        elif zone_transfer:
             findings.append(Finding(
                 severity="critical",
                 title="Zone Transfer allowed",
@@ -59,7 +67,7 @@ class DNSSecurityModule(AnalysisModule):
             findings=findings,
             raw_data={},
             execution_time=elapsed,
-            status="success",
+            status=status,
         )
 
     def _check_dnssec(self, domain: str) -> bool:
@@ -72,9 +80,9 @@ class DNSSecurityModule(AnalysisModule):
         except Exception:
             return False
 
-    def _check_zone_transfer(self, domain: str) -> bool:
+    def _check_zone_transfer(self, domain: str) -> bool | None:
         if not check_tool("dnsrecon"):
-            return False
+            return None
         try:
             result = run_cmd(
                 ["dnsrecon", "-d", domain, "-t", "axfr"],

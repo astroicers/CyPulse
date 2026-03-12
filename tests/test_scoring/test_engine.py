@@ -92,6 +92,35 @@ class TestScoringEngine:
         assert exps[0].module_id == "M1"
 
 
+    def test_error_module_score_zero(self):
+        """Modules with error status should contribute 0 and generate explanation."""
+        modules = [
+            ModuleResult(module_id="M1", module_name="Web Security", score=0,
+                         max_score=25, findings=[], execution_time=0.0, status="error"),
+            ModuleResult(module_id="M2", module_name="IP Reputation", score=15,
+                         max_score=15, findings=[], execution_time=0.0, status="success"),
+        ]
+        findings = Findings(domain="example.com", timestamp="test", modules=modules)
+        engine = ScoringEngine()
+        score = engine.calculate(findings)
+        assert score.total == 15
+        assert score.dimensions["M1"] == 0
+        assert any(e.module_id == "M1" for e in score.explanations)
+
+    def test_partial_module_has_explanation(self):
+        """Modules with partial status and reduced score should generate explanation."""
+        modules = [
+            ModuleResult(module_id="M1", module_name="Web Security", score=20,
+                         max_score=25, findings=[], execution_time=0.0, status="partial"),
+        ]
+        findings = Findings(domain="example.com", timestamp="test", modules=modules)
+        engine = ScoringEngine()
+        score = engine.calculate(findings)
+        assert score.total == 20
+        assert len(score.explanations) == 1
+        assert "未完成檢測" in score.explanations[0].reason
+
+
 class TestSaveScore:
     def test_save_and_read(self):
         score = Score(total=78, grade="C", dimensions={"M1": 18}, explanations=[])

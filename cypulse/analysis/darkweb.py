@@ -28,20 +28,35 @@ class DarkWebModule(AnalysisModule):
         score = self.max_score()
 
         api_key = os.environ.get("HIBP_API_KEY", "")
-        if api_key:
-            breaches = self._check_hibp(assets.domain, api_key)
-            for breach in breaches:
-                impact = min(3, len(breaches))  # Max -3 per breach, cap at -10 total
-                findings.append(Finding(
-                    severity="high",
-                    title=f"Breach: {breach.get('Name', 'Unknown')}",
-                    description=f"Domain {assets.domain} 出現在 {breach.get('Name', '')} 資料外洩事件中",
-                    evidence=breach.get("Name", ""),
-                    score_impact=impact,
-                ))
-                score = max(0, score - impact)
-        else:
+        if not api_key:
             logger.warning("hibp_no_api_key", module=self.module_id())
+            elapsed = time.time() - start
+            return ModuleResult(
+                module_id=self.module_id(),
+                module_name=self.module_name(),
+                score=0,
+                max_score=self.max_score(),
+                findings=[Finding(
+                    severity="info",
+                    title="HIBP API key not configured",
+                    description="HIBP_API_KEY 未設定，暗網憑證檢查未執行",
+                )],
+                raw_data={},
+                execution_time=elapsed,
+                status="error",
+            )
+
+        breaches = self._check_hibp(assets.domain, api_key)
+        for breach in breaches:
+            impact = min(3, len(breaches))
+            findings.append(Finding(
+                severity="high",
+                title=f"Breach: {breach.get('Name', 'Unknown')}",
+                description=f"Domain {assets.domain} 出現在 {breach.get('Name', '')} 資料外洩事件中",
+                evidence=breach.get("Name", ""),
+                score_impact=impact,
+            ))
+            score = max(0, score - impact)
 
         elapsed = time.time() - start
         return ModuleResult(
@@ -52,7 +67,7 @@ class DarkWebModule(AnalysisModule):
             findings=findings,
             raw_data={},
             execution_time=elapsed,
-            status="success" if api_key else "partial",
+            status="success",
         )
 
     def _check_hibp(self, domain: str, api_key: str) -> list[dict]:

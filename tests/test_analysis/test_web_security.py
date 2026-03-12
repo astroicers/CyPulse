@@ -49,4 +49,6 @@ class TestWebSecurityModule:
         m = WebSecurityModule()
         result = m.run(assets)
         assert result.score == 25
-        assert len(result.findings) == 0
+        # May have info finding about nuclei not installed
+        real_findings = [f for f in result.findings if f.severity != "info"]
+        assert len(real_findings) == 0

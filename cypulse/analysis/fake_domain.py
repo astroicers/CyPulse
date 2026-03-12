@@ -25,22 +25,35 @@ class FakeDomainModule(AnalysisModule):
         findings: list[Finding] = []
         score = self.max_score()
 
-        try:
-            fake_domains = self._run_dnstwist(assets.domain)
-            resolved = [d for d in fake_domains if d.get("dns_a") or d.get("dns_aaaa")]
+        fake_domains = self._run_dnstwist(assets.domain)
+        if fake_domains is None:
+            elapsed = time.time() - start
+            return ModuleResult(
+                module_id=self.module_id(),
+                module_name=self.module_name(),
+                score=0,
+                max_score=self.max_score(),
+                findings=[Finding(
+                    severity="info",
+                    title="dnstwist unavailable",
+                    description="dnstwist 無法執行，偽冒域名偵測未完成",
+                )],
+                raw_data={},
+                execution_time=elapsed,
+                status="error",
+            )
 
-            for domain_info in resolved[:5]:  # Cap at 5 findings
-                findings.append(Finding(
-                    severity="medium",
-                    title=f"Suspicious domain: {domain_info.get('domain', '')}",
-                    description=f"偽冒域名 {domain_info.get('domain', '')} 已有 DNS 解析 ({domain_info.get('fuzzer', '')})",
-                    evidence=domain_info.get("domain", ""),
-                    score_impact=1,
-                ))
-                score = max(0, score - 1)
+        resolved = [d for d in fake_domains if d.get("dns_a") or d.get("dns_aaaa")]
 
-        except Exception as e:
-            logger.error("dnstwist_failed", error=str(e))
+        for domain_info in resolved[:5]:
+            findings.append(Finding(
+                severity="medium",
+                title=f"Suspicious domain: {domain_info.get('domain', '')}",
+                description=f"偽冒域名 {domain_info.get('domain', '')} 已有 DNS 解析 ({domain_info.get('fuzzer', '')})",
+                evidence=domain_info.get("domain", ""),
+                score_impact=1,
+            ))
+            score = max(0, score - 1)
 
         elapsed = time.time() - start
         return ModuleResult(
@@ -54,16 +67,16 @@ class FakeDomainModule(AnalysisModule):
             status="success",
         )
 
-    def _run_dnstwist(self, domain: str) -> list[dict]:
+    def _run_dnstwist(self, domain: str) -> list[dict] | None:
         try:
             import dnstwist
-            scanner = dnstwist.DomainFuzz(domain)
-            scanner.generate()
-            results = scanner.domains
-            return results if isinstance(results, list) else []
         except ImportError:
             logger.warning("dnstwist_not_installed")
-            return []
+            return None
+        try:
+            fuzzer = dnstwist.Fuzzer(domain)
+            fuzzer.generate()
+            return [dict(d) for d in fuzzer.domains]
         except Exception as e:
             logger.error("dnstwist_error", error=str(e))
-            return []
+            return None

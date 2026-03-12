@@ -44,9 +44,18 @@ class NetworkSecurityModule(AnalysisModule):
 
         # Run nmap for service detection if available
         nmap_findings = self._run_nmap(assets)
-        for nf in nmap_findings:
-            findings.append(nf)
-            score = max(0, score - nf.score_impact)
+        status = "success"
+        if nmap_findings is None:
+            status = "partial"
+            findings.append(Finding(
+                severity="info",
+                title="nmap not installed",
+                description="nmap 未安裝，CVE 弱點掃描未執行",
+            ))
+        else:
+            for nf in nmap_findings:
+                findings.append(nf)
+                score = max(0, score - nf.score_impact)
 
         elapsed = time.time() - start
         return ModuleResult(
@@ -57,13 +66,13 @@ class NetworkSecurityModule(AnalysisModule):
             findings=findings,
             raw_data={},
             execution_time=elapsed,
-            status="success",
+            status=status,
         )
 
-    def _run_nmap(self, assets: Assets) -> list[Finding]:
+    def _run_nmap(self, assets: Assets) -> list[Finding] | None:
         if not check_tool("nmap"):
             logger.warning("nmap_not_found")
-            return []
+            return None
 
         findings = []
         live_ips = set()

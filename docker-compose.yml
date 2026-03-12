@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   cypulse:
     build: .
@@ -8,7 +6,8 @@ services:
       - ./data:/app/data
       - ./config:/app/config
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       - CYPULSE_OUTPUT_DIR=/app/data
       - CYPULSE_LOG_LEVEL=INFO

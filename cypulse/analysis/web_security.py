@@ -59,9 +59,18 @@ class WebSecurityModule(AnalysisModule):
 
         # Run nuclei if available
         nuclei_findings = self._run_nuclei(assets)
-        for nf in nuclei_findings:
-            findings.append(nf)
-            score = max(0, score - nf.score_impact)
+        status = "success"
+        if nuclei_findings is None:
+            status = "partial"
+            findings.append(Finding(
+                severity="info",
+                title="nuclei not installed",
+                description="nuclei 未安裝，弱點掃描未執行",
+            ))
+        else:
+            for nf in nuclei_findings:
+                findings.append(nf)
+                score = max(0, score - nf.score_impact)
 
         elapsed = time.time() - start
         return ModuleResult(
@@ -72,13 +81,13 @@ class WebSecurityModule(AnalysisModule):
             findings=findings,
             raw_data={},
             execution_time=elapsed,
-            status="success",
+            status=status,
         )
 
-    def _run_nuclei(self, assets: Assets) -> list[Finding]:
+    def _run_nuclei(self, assets: Assets) -> list[Finding] | None:
         if not check_tool("nuclei"):
             logger.warning("nuclei_not_found")
-            return []
+            return None
 
         live_hosts = [a.subdomain for a in assets.subdomains if a.http_status]
         if not live_hosts:

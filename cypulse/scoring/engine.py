@@ -26,13 +26,21 @@ class ScoringEngine:
             deduction = max_score - module_result.score
 
             if deduction > 0:
-                for finding in module_result.findings:
-                    if finding.score_impact > 0:
-                        explanations.append(ScoreExplanation(
-                            module_id=mid,
-                            reason=finding.title,
-                            deduction=finding.score_impact,
-                        ))
+                if module_result.status in ("error", "partial"):
+                    module_name = weight_info.get("name", mid)
+                    explanations.append(ScoreExplanation(
+                        module_id=mid,
+                        reason=f"{module_name} 未完成檢測 (status: {module_result.status})",
+                        deduction=deduction,
+                    ))
+                else:
+                    for finding in module_result.findings:
+                        if finding.score_impact > 0:
+                            explanations.append(ScoreExplanation(
+                                module_id=mid,
+                                reason=finding.title,
+                                deduction=finding.score_impact,
+                            ))
 
         total = sum(dimensions.values())
         grade = get_grade(total)
