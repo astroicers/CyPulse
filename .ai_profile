@@ -1,0 +1,14 @@
+type: system
+mode: single
+workflow: standard
+rag: disabled
+guardrail: disabled
+hitl: standard
+autonomous: enabled
+orchestrator: enabled
+autopilot: enabled
+design: disabled
+coding_style: disabled
+openapi: disabled
+frontend_quality: disabled
+name: CyPulse

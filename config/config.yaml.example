@@ -1,0 +1,30 @@
+# CyPulse 設定檔
+# 複製為 config.yaml 並填入實際值
+
+scan:
+  rate_limit: 50
+  timeout: 300
+  modules: [M1, M2, M3, M4, M5, M6, M7]
+
+api_keys:
+  abuseipdb: ""
+  hibp: ""
+  urlscan: ""
+
+notifications:
+  slack:
+    webhook_url: ""
+  email:
+    smtp_host: ""
+    smtp_port: 587
+    smtp_user: ""
+    smtp_pass: ""
+    from: ""
+    to: []
+  line:
+    notify_token: ""
+
+report:
+  language: zh-TW
+  font: "Noto Sans TC"
+  logo: ""

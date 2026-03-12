@@ -1,0 +1,58 @@
+# RAG 向量索引（本地生成，不追蹤）
+.rag/index/
+
+# 護欄紀錄
+.guardrail/
+
+# Agent 狀態（本地）
+.agent-events/
+.agent-lock.yaml
+
+# Autopilot 狀態（跨 session 續接，本地生成）
+.asp-autopilot-state.json
+
+# Session 紀錄（本地）
+docs/session-log.md
+
+# 安裝備份
+CLAUDE.md.pre-asp
+CLAUDE.md.pre-upgrade
+Makefile.pre-asp-upgrade
+
+# 安裝暫存
+.asp-tmp/
+
+# 暫存
+tmp/
+*.out
+*.zip
+
+# 環境變數
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+
+# CyPulse
+data/
+config/config.yaml
+config/targets.yaml
+logs/
+
+# ASP
+.asp-autopilot-state.json
+.asp-audit-baseline.json

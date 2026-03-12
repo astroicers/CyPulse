@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  cypulse:
+    build: .
+    image: ghcr.io/cypulse/cypulse:latest
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+    env_file:
+      - .env
+    environment:
+      - CYPULSE_OUTPUT_DIR=/app/data
+      - CYPULSE_LOG_LEVEL=INFO

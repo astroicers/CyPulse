@@ -1,0 +1,11 @@
+# CyPulse 多目標設定
+# 複製為 targets.yaml 並填入實際 domain
+
+targets:
+  - domain: example.com
+    enabled: true
+    schedule: "0 2 * * 0"  # 每週日 02:00
+
+  - domain: example.org
+    enabled: false
+    schedule: "0 2 * * 0"

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CyPulse 資安曝險評級報告 — {{ domain }}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: "Noto Sans TC", "Microsoft JhengHei", sans-serif; color: #333; line-height: 1.6; padding: 2rem; max-width: 1200px; margin: 0 auto; }
+        h1 { color: #1a365d; border-bottom: 3px solid #2b6cb0; padding-bottom: 0.5rem; margin-bottom: 1rem; }
+        h2 { color: #2b6cb0; margin: 1.5rem 0 0.5rem; }
+        h3 { color: #4a5568; margin: 1rem 0 0.5rem; }
+        .header { text-align: center; margin-bottom: 2rem; }
+        .header .domain { font-size: 1.5rem; color: #718096; }
+        .header .timestamp { font-size: 0.9rem; color: #a0aec0; }
+
+        .score-card { background: linear-gradient(135deg, #1a365d, #2b6cb0); color: white; border-radius: 12px; padding: 2rem; text-align: center; margin: 2rem 0; }
+        .score-card .total { font-size: 4rem; font-weight: bold; }
+        .score-card .grade { font-size: 2rem; background: rgba(255,255,255,0.2); border-radius: 50%; width: 80px; height: 80px; display: inline-flex; align-items: center; justify-content: center; margin: 0.5rem; }
+        .grade-A { background: rgba(72, 187, 120, 0.3) !important; }
+        .grade-B { background: rgba(66, 153, 225, 0.3) !important; }
+        .grade-C { background: rgba(237, 137, 54, 0.3) !important; }
+        .grade-D { background: rgba(245, 101, 101, 0.3) !important; }
+
+        .dimensions { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+        .dim-card { background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; text-align: center; }
+        .dim-card .dim-score { font-size: 1.5rem; font-weight: bold; }
+        .dim-card .dim-name { font-size: 0.85rem; color: #718096; }
+        .dim-card .dim-bar { height: 6px; background: #e2e8f0; border-radius: 3px; margin-top: 0.5rem; }
+        .dim-card .dim-fill { height: 100%; border-radius: 3px; }
+
+        table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+        th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #e2e8f0; }
+        th { background: #f7fafc; font-weight: 600; color: #4a5568; }
+        tr:hover { background: #f7fafc; }
+
+        .severity { padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; }
+        .severity-critical { background: #fed7d7; color: #c53030; }
+        .severity-high { background: #feebc8; color: #c05621; }
+        .severity-medium { background: #fefcbf; color: #975a16; }
+        .severity-low { background: #c6f6d5; color: #276749; }
+        .severity-info { background: #bee3f8; color: #2b6cb0; }
+
+        .module-section { margin: 2rem 0; padding: 1.5rem; border: 1px solid #e2e8f0; border-radius: 8px; }
+        .module-header { display: flex; justify-content: space-between; align-items: center; }
+        .module-score { font-size: 1.2rem; font-weight: bold; }
+
+        .assets-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin: 1rem 0; }
+        .stat-card { background: #ebf8ff; border-radius: 8px; padding: 1rem; text-align: center; }
+        .stat-card .stat-value { font-size: 2rem; font-weight: bold; color: #2b6cb0; }
+        .stat-card .stat-label { font-size: 0.85rem; color: #718096; }
+
+        .footer { text-align: center; margin-top: 3rem; padding: 1rem; color: #a0aec0; font-size: 0.8rem; border-top: 1px solid #e2e8f0; }
+
+        @media print {
+            body { padding: 1rem; }
+            .module-section { break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>CyPulse 資安曝險評級報告</h1>
+        <div class="domain">{{ domain }}</div>
+        <div class="timestamp">掃描時間：{{ timestamp }}</div>
+    </div>
+
+    <!-- Score Card -->
+    <div class="score-card">
+        <div class="total">{{ score.total }}</div>
+        <div class="grade grade-{{ score.grade }}">{{ score.grade }}</div>
+        <div>掃描耗時：{{ "%.0f"|format(score.scan_duration) }} 秒</div>
+    </div>
+
+    <!-- Dimensions Overview -->
+    <h2>七維度評分</h2>
+    <div class="dimensions">
+        {% for mid, info in weights.items() %}
+        <div class="dim-card">
+            <div class="dim-score">{{ score.dimensions.get(mid, 0) }}/{{ info.max_score }}</div>
+            <div class="dim-name">{{ info.name }}</div>
+            <div class="dim-bar">
+                {% set pct = (score.dimensions.get(mid, 0) / info.max_score * 100) if info.max_score > 0 else 0 %}
+                <div class="dim-fill" style="width: {{ pct }}%; background: {% if pct >= 80 %}#48bb78{% elif pct >= 60 %}#ed8936{% else %}#f56565{% endif %};"></div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Assets Summary -->
+    <h2>資產概覽</h2>
+    <div class="assets-summary">
+        <div class="stat-card">
+            <div class="stat-value">{{ assets.total_subdomains }}</div>
+            <div class="stat-label">子網域總數</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ assets.total_live }}</div>
+            <div class="stat-label">存活主機</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ assets.total_http }}</div>
+            <div class="stat-label">HTTP 服務</div>
+        </div>
+    </div>
+
+    <!-- Module Details -->
+    <h2>模組分析詳情</h2>
+    {% for module in findings.modules %}
+    <div class="module-section">
+        <div class="module-header">
+            <h3>{{ module.module_id }} {{ module.module_name }}</h3>
+            <div class="module-score">{{ module.score }}/{{ module.max_score }}</div>
+        </div>
+        {% if module.findings %}
+        <table>
+            <thead>
+                <tr>
+                    <th>嚴重度</th>
+                    <th>發現項目</th>
+                    <th>說明</th>
+                    <th>扣分</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for finding in module.findings %}
+                <tr>
+                    <td><span class="severity severity-{{ finding.severity }}">{{ finding.severity }}</span></td>
+                    <td>{{ finding.title }}</td>
+                    <td>{{ finding.description }}</td>
+                    <td>-{{ finding.score_impact }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color: #48bb78; margin-top: 0.5rem;">未發現風險項目</p>
+        {% endif %}
+    </div>
+    {% endfor %}
+
+    <!-- Deduction Summary -->
+    {% if score.explanations %}
+    <h2>扣分明細</h2>
+    <table>
+        <thead>
+            <tr><th>模組</th><th>原因</th><th>扣分</th></tr>
+        </thead>
+        <tbody>
+            {% for exp in score.explanations %}
+            <tr>
+                <td>{{ exp.module_id }}</td>
+                <td>{{ exp.reason }}</td>
+                <td>-{{ exp.deduction }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    <!-- Assets Table -->
+    <h2>資產清單</h2>
+    <table>
+        <thead>
+            <tr><th>子網域</th><th>IP</th><th>Port</th><th>HTTP</th><th>TLS</th></tr>
+        </thead>
+        <tbody>
+            {% for asset in assets.subdomains %}
+            <tr>
+                <td>{{ asset.subdomain }}</td>
+                <td>{{ asset.ip or "-" }}</td>
+                <td>{{ asset.ports|join(", ") if asset.ports else "-" }}</td>
+                <td>{{ asset.http_status or "-" }}</td>
+                <td>{{ asset.tls_version or "-" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="footer">
+        <p>此報告由 CyPulse 自動產生 | {{ timestamp }}</p>
+        <p>CyPulse — 開源 EASM 資安曝險評級平台</p>
+    </div>
+</body>
+</html>

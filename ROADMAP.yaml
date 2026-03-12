@@ -1,0 +1,492 @@
+# ROADMAP.yaml — CyPulse Autopilot 任務清單
+# 使用方式：make autopilot-init → 編輯此檔 → .ai_profile 設定 autopilot: enabled → 開始執行
+
+version: "1.0"
+project: CyPulse
+last_updated: 2026-03-12
+
+# ═══ 專案元資料 ═══
+
+# ── 技術棧 ──
+stack:
+  frontend: none           # 無前端框架，HTML 報告由 Jinja2 產生
+  backend: python          # Python 腳本 + Shell 自動化
+  database: none           # JSON 檔案儲存，無資料庫
+  infra: docker            # Docker 容器化部署
+
+# ── 功能需求 ──
+requires:
+  uiux: false              # CLI 工具 + HTML 報告，無 UI/UX
+  api: false               # 內部工具，無外部 API
+  multi_agent: false
+  rag: false
+  coding_style: false
+
+# ── 技術約束與規範 ──
+conventions:
+  language: zh-TW
+  naming: snake_case
+  error_handling: exception
+  commit_format: conventional
+  branch_strategy: github-flow
+
+# ── 架構與整合約束 ──
+architecture:
+  style: monolith           # 單一 CLI 工具搭配模組化 Python packages
+  api_style: rest           # 內部模組間以函式呼叫，非網路 API
+  auth: none                # 無認證需求
+  message_queue: none
+  cache: none
+  search: none
+
+integrations:
+  - name: projectdiscovery
+    purpose: 資產探勘與漏洞掃描
+    sdk: subfinder, httpx, nuclei, dnsx, naabu
+  - name: checkdmarc
+    purpose: 郵件安全分析（SPF/DKIM/DMARC）
+    sdk: checkdmarc
+  - name: dnstwist
+    purpose: 偽冒域名偵測
+    sdk: dnstwist
+  - name: h8mail
+    purpose: 暗網憑證外洩搜尋
+    sdk: h8mail
+  - name: weasyprint
+    purpose: HTML 轉 PDF 報告
+    sdk: weasyprint
+  - name: jinja2
+    purpose: HTML 報告模板引擎
+    sdk: jinja2
+
+# ── 品質與安全要求 ──
+quality:
+  test_coverage_target: 80%
+  e2e_required: false
+  performance_budget: false
+  accessibility: none
+
+security:
+  compliance: [OWASP-Top-10]
+  auth_requirements:
+    mfa: false
+    session_timeout: 30m
+    password_policy: standard
+
+observability:
+  logging: structured
+  metrics: none
+  tracing: none
+  alerting: none
+
+# ── 前置文件 ──
+documents:
+  srs: docs/SRS.md
+  sds: docs/SDS.md
+  deploy_spec: docs/DEPLOY_SPEC.md
+
+# ═══ Milestones & Tasks ═══
+
+milestones:
+  # ────────────────────────────────────────────
+  # M1：環境建置 & 資產探勘（Week 1–2）
+  # ────────────────────────────────────────────
+  - id: M1
+    title: "環境建置 & 資產探勘"
+    target_date: 2026-03-26
+    status: completed
+
+    tasks:
+      - id: T001
+        title: "專案目錄結構與 Docker 開發環境建置"
+        type: NEW_FEATURE
+        priority: 1
+        adr: ADR-001
+        spec: null
+        srs_ref: null
+        depends_on: []
+        status: completed
+        estimated_complexity: low
+        description: |
+          建立 CyPulse 專案目錄結構（cypulse/, tests/, config/, output/），
+          撰寫 Dockerfile 與 docker-compose.yml，安裝所有 Python 相依套件與
+          ProjectDiscovery CLI 工具。確認 Docker 環境可正常啟動。
+
+      - id: T002
+        title: "subfinder 子網域被動列舉模組"
+        type: NEW_FEATURE
+        priority: 2
+        adr: ADR-001
+        spec: null
+        srs_ref: FR-101
+        depends_on: [T001]
+        status: completed
+        estimated_complexity: medium
+        description: |
+          實作 subfinder wrapper，輸入目標 domain，輸出子網域清單（JSON）。
+          支援設定 API key 來源（config.yaml）與靜默模式。
+
+      - id: T003
+        title: "amass 被動子網域探勘模組"
+        type: NEW_FEATURE
+        priority: 3
+        adr: null
+        spec: null
+        srs_ref: FR-101
+        depends_on: [T001]
+        status: completed
+        estimated_complexity: medium
+        description: |
+          實作 amass passive wrapper，與 subfinder 結果合併去重，
+          輸出統一格式的子網域清單。
+
+      - id: T004
+        title: "dnsx DNS 解析驗證模組"
+        type: NEW_FEATURE
+        priority: 3
+        adr: null
+        spec: null
+        srs_ref: FR-102
+        depends_on: [T001]
+        status: completed
+        estimated_complexity: low
+        description: |
+          實作 dnsx wrapper，過濾存活的 DNS 解析記錄，
+          輸出解析成功的子網域與對應 IP。
+
+      - id: T005
+        title: "httpx HTTP 服務探勘模組"
+        type: NEW_FEATURE
+        priority: 4
+        adr: null
+        spec: null
+        srs_ref: FR-103
+        depends_on: [T002]
+        status: completed
+        estimated_complexity: medium
+        description: |
+          實作 httpx wrapper，驗證 HTTP 服務，取得 Title、Status Code、
+          TLS 資訊、Security Headers。輸出 assets.json。
+
+      - id: T006
+        title: "naabu Port 掃描模組"
+        type: NEW_FEATURE
+        priority: 4
+        adr: null
+        spec: null
+        srs_ref: FR-104
+        depends_on: [T001]
+        status: completed
+        estimated_complexity: medium
+        description: |
+          實作 naabu wrapper，快速掃描常見 Port（80/443/8080/22/3306 等），
+          輸出開放 Port 清單（JSON）。
+
+      - id: T007
+        title: "資產探勘整合流水線（phase1_recon.sh）"
+        type: NEW_FEATURE
+        priority: 5
+        adr: null
+        spec: null
+        srs_ref: FR-105
+        depends_on: [T002, T003, T004, T005, T006]
+        status: completed
+        estimated_complexity: high
+        description: |
+          將 subfinder → amass → dnsx → naabu → httpx 串成一鍵探勘流水線，
+          輸出統一的 assets.json 作為 Phase 2 七大模組的輸入。
+
+  # ────────────────────────────────────────────
+  # M2：七大安全分析模組（Week 3–6）
+  # ────────────────────────────────────────────
+  - id: M2
+    title: "七大安全分析模組核心實作"
+    target_date: 2026-04-23
+    status: completed
+
+    tasks:
+      - id: T101
+        title: "M1 網站服務安全模組（nuclei + testssl.sh）"
+        type: NEW_FEATURE
+        priority: 1
+        adr: null
+        spec: null
+        srs_ref: FR-201
+        depends_on: [T005]
+        status: completed
+        estimated_complexity: high
+        description: |
+          整合 nuclei HTTP 模板掃描（misconfig/exposures/technologies）、
+          testssl.sh TLS 檢測、httpx Security Header 分析。
+          評分依據：缺少重要 Header 每項 -5 分，TLS < 1.2 -20 分。
+          輸出 module_M1.json。
+
+      - id: T102
+        title: "M2 IP 信譽模組（AbuseIPDB + Spamhaus）"
+        type: NEW_FEATURE
+        priority: 2
+        adr: null
+        spec: null
+        srs_ref: FR-202
+        depends_on: [T005]
+        status: completed
+        estimated_complexity: medium
+        description: |
+          查詢 AbuseIPDB API 與 Spamhaus DROP list，
+          判定 IP 是否在黑名單/灰名單中。
+          評分依據：黑名單命中 -10 / 灰名單 -5。
+          輸出 module_M2.json。
+
+      - id: T103
+        title: "M3 網路服務安全模組（nmap + nuclei CVE）"
+        type: NEW_FEATURE
+        priority: 2
+        adr: null
+        spec: null
+        srs_ref: FR-203
+        depends_on: [T006]
+        status: completed
+        estimated_complexity: medium
+        description: |
+          使用 nmap -sV --script vuln 與 nuclei CVE 模板掃描，
+          分析開放的高危 Port 與已知漏洞。
+          評分依據：高危 Port 開放 -10 / CVE 每個 -5。
+          輸出 module_M3.json。
+
+      - id: T104
+        title: "M4 網域系統安全模組（dnsrecon + DNSSEC）"
+        type: NEW_FEATURE
+        priority: 3
+        adr: null
+        spec: null
+        srs_ref: FR-204
+        depends_on: [T004]
+        status: completed
+        estimated_complexity: medium
+        description: |
+          使用 dnsrecon 與 dnsx 檢查 SOA/MX/DNSSEC 設定，
+          偵測 Zone Transfer 漏洞。
+          評分依據：Zone Transfer -10 / 無 DNSSEC -5。
+          輸出 module_M4.json。
+
+      - id: T105
+        title: "M5 郵件安全模組（checkdmarc）"
+        type: NEW_FEATURE
+        priority: 3
+        adr: null
+        spec: null
+        srs_ref: FR-205
+        depends_on: [T004]
+        status: completed
+        estimated_complexity: medium
+        description: |
+          使用 checkdmarc 檢測 SPF/DKIM/DMARC 設定，
+          搭配 swaks 進行 SMTP 測試。
+          評分依據：無 DMARC -6 / 無 SPF -4 / 無 DKIM -2。
+          輸出 module_M5.json。
+
+      - id: T106
+        title: "M6 暗網外洩憑證模組（h8mail + HIBP）"
+        type: NEW_FEATURE
+        priority: 4
+        adr: null
+        spec: null
+        srs_ref: FR-206
+        depends_on: []
+        status: completed
+        estimated_complexity: medium
+        description: |
+          使用 h8mail 整合 HIBP API 查詢目標 domain 相關 Email 外洩記錄，
+          輸出外洩帳號清單與來源資料庫。
+          評分依據：每組外洩憑證 -3（上限 -10）。
+          輸出 module_M6.json。
+
+      - id: T107
+        title: "M7 可疑偽冒網域模組（dnstwist + URLScan）"
+        type: NEW_FEATURE
+        priority: 4
+        adr: null
+        spec: null
+        srs_ref: FR-207
+        depends_on: []
+        status: completed
+        estimated_complexity: medium
+        description: |
+          使用 dnstwist 生成 typosquat/homoglyph 等變體域名，
+          dnsx 驗證哪些已被解析，URLScan.io/PhishTank API 比對。
+          評分依據：已解析偽冒域名每個 -1（上限 -5）。
+          輸出 module_M7.json。
+
+      - id: T108
+        title: "七大模組 findings.json 整合輸出"
+        type: NEW_FEATURE
+        priority: 5
+        adr: null
+        spec: null
+        srs_ref: null
+        depends_on: [T101, T102, T103, T104, T105, T106, T107]
+        status: completed
+        estimated_complexity: medium
+        description: |
+          整合 module_M1~M7.json 為統一的 findings.json，
+          標準化資料格式，準備進入評分階段。
+
+  # ────────────────────────────────────────────
+  # M3：評分系統 & 報告輸出（Week 7–10）
+  # ────────────────────────────────────────────
+  - id: M3
+    title: "評分系統 & 報告輸出"
+    target_date: 2026-05-21
+    status: completed
+
+    tasks:
+      - id: T201
+        title: "七維度加權評分演算法（scoring.py）"
+        type: NEW_FEATURE
+        priority: 1
+        adr: null
+        spec: null
+        srs_ref: FR-301
+        depends_on: [T108]
+        status: completed
+        estimated_complexity: high
+        description: |
+          實作加權評分引擎：M1(25%) M2(15%) M3(20%) M4(15%) M5(10%) M6(10%) M7(5%)。
+          輸入 findings.json，輸出 score.json（含總分 0-100、等級 A/B/C/D、各維度分數）。
+          等級對照：A(90-100) B(80-89) C(70-79) D(<70)。
+
+      - id: T202
+        title: "JSON 結果彙整層"
+        type: NEW_FEATURE
+        priority: 2
+        adr: null
+        spec: null
+        srs_ref: null
+        depends_on: [T201]
+        status: completed
+        estimated_complexity: medium
+        description: |
+          建立資料彙整層，將 score.json + findings.json + assets.json
+          合併為完整的掃描報告資料結構，供報告模板使用。
+
+      - id: T203
+        title: "繁中 HTML 報告模板（Jinja2）"
+        type: NEW_FEATURE
+        priority: 2
+        adr: null
+        spec: null
+        srs_ref: FR-302
+        depends_on: [T202]
+        status: completed
+        estimated_complexity: high
+        description: |
+          使用 Jinja2 模板引擎渲染繁體中文 HTML 報告，
+          包含七大模組分頁、分數儀表板、風險項目明細。
+
+      - id: T204
+        title: "PDF 報告輸出（weasyprint）"
+        type: NEW_FEATURE
+        priority: 3
+        adr: null
+        spec: null
+        srs_ref: FR-303
+        depends_on: [T203]
+        status: completed
+        estimated_complexity: medium
+        description: |
+          使用 weasyprint 將 HTML 報告轉 PDF，
+          支援 Noto Sans TC 中文字型，確保無亂碼。
+
+      - id: T205
+        title: "CSV 資產/CVE 清單匯出"
+        type: NEW_FEATURE
+        priority: 4
+        adr: null
+        spec: null
+        srs_ref: FR-304
+        depends_on: [T202]
+        status: completed
+        estimated_complexity: low
+        description: |
+          提供資產清單與 CVE 清單的 CSV 匯出功能，
+          便於客戶自行處理。
+
+  # ────────────────────────────────────────────
+  # M4：自動化排程 & 持續監控（Week 11–16）
+  # ────────────────────────────────────────────
+  - id: M4
+    title: "自動化排程 & 持續監控"
+    target_date: 2026-07-02
+    status: completed
+
+    tasks:
+      - id: T301
+        title: "Cron 自動排程掃描"
+        type: NEW_FEATURE
+        priority: 1
+        adr: null
+        spec: null
+        srs_ref: FR-401
+        depends_on: [T201]
+        status: completed
+        estimated_complexity: medium
+        description: |
+          實作 Cron Job 設定，支援每週自動執行完整掃描，
+          多 Domain 目標管理（targets.yaml），掃描結果依日期儲存。
+
+      - id: T302
+        title: "差異比對與告警機制"
+        type: NEW_FEATURE
+        priority: 2
+        adr: null
+        spec: null
+        srs_ref: FR-402
+        depends_on: [T301]
+        status: completed
+        estimated_complexity: medium
+        description: |
+          每次掃描後與上次結果比對 diff，偵測新增/消失的風險項目。
+          新發現 Critical/High 漏洞觸發即時通知，
+          分數下降超過 10 分自動告警。
+
+      - id: T303
+        title: "Slack / Email / LINE 通知整合"
+        type: NEW_FEATURE
+        priority: 3
+        adr: null
+        spec: null
+        srs_ref: FR-403
+        depends_on: [T302]
+        status: completed
+        estimated_complexity: medium
+        description: |
+          整合 Slack Incoming Webhook、smtplib Email（Jinja2 HTML 模板）、
+          LINE Notify API。Critical/High 即時通知，每週報告自動寄送。
+
+      - id: T304
+        title: "GitHub 開源封裝"
+        type: GENERAL
+        priority: 4
+        adr: null
+        spec: null
+        srs_ref: null
+        depends_on: [T203]
+        status: completed
+        estimated_complexity: medium
+        description: |
+          完善 README.md、docker-compose.yml、targets.yaml.example、
+          CONTRIBUTING.md。發布 v1.0 Release，附 Demo 報告截圖。
+
+      - id: T305
+        title: "完整文件與使用指南"
+        type: GENERAL
+        priority: 5
+        adr: null
+        spec: null
+        srs_ref: null
+        depends_on: [T304]
+        status: completed
+        estimated_complexity: low
+        description: |
+          撰寫安裝指南、使用說明、模組擴充指南、
+          API Key 設定說明、常見問題排除。
