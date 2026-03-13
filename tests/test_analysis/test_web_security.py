@@ -68,7 +68,7 @@ class TestWebSecurityModule:
         header_findings = [f for f in result.findings if f.severity != "info"]
         assert len(header_findings) == 3  # not 30
         for f in header_findings:
-            assert "10" in f.description
+            assert "10 個子網域" in f.description
 
     def test_partial_headers_present(self):
         """部分子網域有設 header，只統計缺失的。"""
