@@ -54,13 +54,14 @@ COPY --from=pd-tools /usr/local/bin/nuclei /usr/local/bin/
 COPY --from=pd-tools /usr/local/bin/dnsx /usr/local/bin/
 COPY --from=pd-tools /usr/local/bin/naabu /usr/local/bin/
 
-RUN groupadd -r cypulse && useradd -r -g cypulse -m cypulse && \
+RUN apt-get update && apt-get install -y --no-install-recommends gosu && rm -rf /var/lib/apt/lists/* && \
+    groupadd -r cypulse && useradd -r -g cypulse -m cypulse && \
     mkdir -p /app/data /app/config && \
     chown -R cypulse:cypulse /app
 
 COPY --chown=cypulse:cypulse . .
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-USER cypulse
-
-ENTRYPOINT ["python", "-m", "cypulse"]
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["--help"]
