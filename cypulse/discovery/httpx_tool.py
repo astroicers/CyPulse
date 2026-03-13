@@ -6,6 +6,32 @@ from cypulse.utils.subprocess import run_cmd, check_tool
 
 logger = structlog.get_logger()
 
+_SECURITY_HEADER_NAMES = [
+    "strict-transport-security",
+    "content-security-policy",
+    "x-frame-options",
+    "x-content-type-options",
+    "referrer-policy",
+    "permissions-policy",
+]
+
+
+def _extract_security_headers(raw_headers: dict) -> dict:
+    """從 PD httpx 的 snake_case header dict 提取安全相關 headers。
+
+    PD httpx 回傳 header key 格式為 snake_case（如 strict_transport_security）。
+    轉換回標準 kebab-case（如 strict-transport-security）以供 M1 分析模組使用。
+    """
+    if not isinstance(raw_headers, dict):
+        return {}
+    result = {}
+    for header_name in _SECURITY_HEADER_NAMES:
+        snake_key = header_name.replace("-", "_")
+        value = raw_headers.get(snake_key)
+        if value:
+            result[header_name] = value
+    return result
+
 
 class HttpxTool(DiscoveryTool):
 
@@ -22,6 +48,7 @@ class HttpxTool(DiscoveryTool):
             "httpx", "-silent", "-json",
             "-status-code", "-title", "-tech-detect",
             "-tls-grab", "-follow-redirects",
+            "-include-response-header",
         ]
 
         try:
@@ -51,6 +78,7 @@ class HttpxTool(DiscoveryTool):
                     "tls_version": data.get("tls", {}).get("version", None) if isinstance(data.get("tls"), dict) else None,
                     "tech": data.get("tech", []),
                     "content_length": data.get("content_length"),
+                    "security_headers": _extract_security_headers(data.get("header", {})),
                     "source": "httpx",
                 })
             except json.JSONDecodeError:
