@@ -1,5 +1,4 @@
 from __future__ import annotations
-import os
 import structlog
 import requests
 from cypulse.analysis.base import AnalysisModule
@@ -27,33 +26,65 @@ class DarkWebModule(AnalysisModule):
         findings: list[Finding] = []
         score = self.max_score()
 
-        api_key = os.environ.get("HIBP_API_KEY", "")
-        if not api_key:
-            logger.warning("hibp_no_api_key", module=self.module_id())
-            elapsed = time.time() - start
-            return ModuleResult(
-                module_id=self.module_id(),
-                module_name=self.module_name(),
-                score=0,
-                max_score=self.max_score(),
-                findings=[Finding(
-                    severity="info",
-                    title="HIBP API key not configured",
-                    description="HIBP_API_KEY 未設定，暗網憑證檢查未執行",
-                )],
-                raw_data={},
-                execution_time=elapsed,
-                status="error",
-            )
-
-        breaches = self._check_hibp(assets.domain, api_key)
-        for breach in breaches:
-            impact = min(3, len(breaches))
+        # 來源 1: HIBP 公開清單 — 查域名是否為已知外洩事件來源
+        hibp_breaches = self._check_hibp_public(assets.domain)
+        for breach in hibp_breaches:
+            impact = min(3, len(hibp_breaches))
             findings.append(Finding(
                 severity="high",
                 title=f"Breach: {breach.get('Name', 'Unknown')}",
-                description=f"Domain {assets.domain} 出現在 {breach.get('Name', '')} 資料外洩事件中",
+                description=(
+                    f"Domain {assets.domain} 曾發生資料外洩事件: "
+                    f"{breach.get('Name', '')}，"
+                    f"影響 {breach.get('PwnCount', '未知')} 筆資料"
+                ),
                 evidence=breach.get("Name", ""),
+                score_impact=impact,
+            ))
+            score = max(0, score - impact)
+
+        # 來源 2: ProxyNova COMB — 查域名 email 是否在外洩資料庫中
+        leaked_count = self._check_credential_leaks(assets.domain)
+        if leaked_count > 0:
+            if leaked_count > 100:
+                sev, impact = "high", 3
+            elif leaked_count > 10:
+                sev, impact = "medium", 2
+            else:
+                sev, impact = "low", 1
+            findings.append(Finding(
+                severity=sev,
+                title=f"發現 {leaked_count} 筆外洩憑證",
+                description=(
+                    f"在公開外洩資料庫中發現 {leaked_count} 筆"
+                    f"與 {assets.domain} 相關的憑證記錄"
+                ),
+                evidence=f"{assets.domain}: {leaked_count} credentials",
+                score_impact=impact,
+            ))
+            score = max(0, score - impact)
+
+        # 來源 3: LeakCheck — 查域名是否出現在外洩資料庫
+        leak_count, leak_sources = self._check_leakcheck(assets.domain)
+        if leak_count > 0:
+            source_names = ", ".join(
+                s.get("name", "Unknown") for s in leak_sources[:5]
+            )
+            if leak_count > 100:
+                sev, impact = "high", 2
+            elif leak_count > 10:
+                sev, impact = "medium", 1
+            else:
+                sev, impact = "low", 1
+            findings.append(Finding(
+                severity=sev,
+                title=f"LeakCheck: 發現 {leak_count} 筆外洩記錄",
+                description=(
+                    f"LeakCheck 資料庫中發現 {leak_count} 筆"
+                    f"與 {assets.domain} 相關的外洩記錄"
+                    f"（來源: {source_names}）"
+                ),
+                evidence=f"{assets.domain}: {leak_count} records via LeakCheck",
                 score_impact=impact,
             ))
             score = max(0, score - impact)
@@ -70,16 +101,50 @@ class DarkWebModule(AnalysisModule):
             status="success",
         )
 
-    def _check_hibp(self, domain: str, api_key: str) -> list[dict]:
+    def _check_hibp_public(self, domain: str) -> list[dict]:
+        """HIBP 公開端點：查域名是否為已知外洩事件來源（免費、不需 API key）。"""
         try:
             resp = requests.get(
                 "https://haveibeenpwned.com/api/v3/breaches",
-                headers={"hibp-api-key": api_key, "user-agent": "CyPulse"},
-                params={"domain": domain},
-                timeout=10,
+                headers={"user-agent": "CyPulse"},
+                timeout=15,
             )
             if resp.status_code == 200:
-                return resp.json()
+                return [
+                    b for b in resp.json()
+                    if b.get("Domain", "").lower() == domain.lower()
+                ]
         except Exception as e:
-            logger.error("hibp_failed", error=str(e))
+            logger.error("hibp_public_failed", error=str(e))
         return []
+
+    def _check_credential_leaks(self, domain: str) -> int:
+        """ProxyNova COMB：查域名相關的外洩憑證數量（免費、不需 API key）。"""
+        try:
+            resp = requests.get(
+                "https://api.proxynova.com/comb",
+                params={"query": domain},
+                headers={"user-agent": "CyPulse"},
+                timeout=15,
+            )
+            if resp.status_code == 200:
+                return resp.json().get("count", 0)
+        except Exception as e:
+            logger.error("comb_check_failed", error=str(e))
+        return 0
+
+    def _check_leakcheck(self, domain: str) -> tuple[int, list[dict]]:
+        """LeakCheck Public API：查域名是否出現在外洩資料庫（免費、不需 API key）。"""
+        try:
+            resp = requests.get(
+                f"https://leakcheck.io/api/public?check={domain}",
+                headers={"user-agent": "CyPulse"},
+                timeout=15,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("success") and data.get("found"):
+                    return (data.get("found", 0), data.get("sources", []))
+        except Exception as e:
+            logger.error("leakcheck_failed", error=str(e))
+        return (0, [])

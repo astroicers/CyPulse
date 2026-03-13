@@ -52,6 +52,17 @@
 
         .footer { text-align: center; margin-top: 3rem; padding: 1rem; color: #a0aec0; font-size: 0.8rem; border-top: 1px solid #e2e8f0; }
 
+        .status-badge { padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-right: 0.5rem; }
+        .status-error { background: #fed7d7; color: #c53030; }
+        .status-partial { background: #fefcbf; color: #975a16; }
+        .status-skipped { background: #e2e8f0; color: #4a5568; }
+
+        .module-alert { padding: 1rem; border-radius: 6px; margin-top: 0.5rem; }
+        .module-alert p { margin-top: 0.3rem; }
+        .alert-error { background: #fff5f5; border: 1px solid #feb2b2; color: #c53030; }
+        .alert-partial { background: #fffff0; border: 1px solid #fefcbf; color: #975a16; }
+        .alert-pass { background: #f0fff4; border: 1px solid #c6f6d5; color: #276749; }
+
         @media print {
             body { padding: 1rem; }
             .module-section { break-inside: avoid; }
@@ -110,9 +121,63 @@
     <div class="module-section">
         <div class="module-header">
             <h3>{{ module.module_id }} {{ module.module_name }}</h3>
-            <div class="module-score">{{ module.score }}/{{ module.max_score }}</div>
+            <div class="module-score">
+                {% if module.status == "error" %}<span class="status-badge status-error">錯誤</span>
+                {% elif module.status == "partial" %}<span class="status-badge status-partial">部分完成</span>
+                {% elif module.status == "skipped" %}<span class="status-badge status-skipped">未執行</span>
+                {% endif %}
+                {{ module.score }}/{{ module.max_score }}
+            </div>
         </div>
-        {% if module.findings %}
+        {% if module.status == "skipped" %}
+        <div class="module-alert alert-partial">
+            <strong>此模組未執行</strong>
+            {% for finding in module.findings %}
+            <p>{{ finding.description }}</p>
+            {% endfor %}
+            <p>此模組不計入評分。請設定對應的 API 金鑰以啟用檢測。</p>
+        </div>
+        {% elif module.status == "error" %}
+        <div class="module-alert alert-error">
+            <strong>本模組未完成檢測</strong>
+            {% for finding in module.findings %}
+            <p>{{ finding.description }}</p>
+            {% endfor %}
+            {% if not module.findings %}
+            <p>模組執行失敗，請檢查環境設定</p>
+            {% endif %}
+        </div>
+        {% elif module.status == "partial" %}
+        <div class="module-alert alert-partial">
+            <strong>本模組部分檢測未執行</strong>
+            {% for finding in module.findings if finding.severity == "info" %}
+            <p>{{ finding.description }}</p>
+            {% endfor %}
+        </div>
+        {% set real_findings = module.findings|rejectattr("severity", "equalto", "info")|list %}
+        {% if real_findings %}
+        <table>
+            <thead>
+                <tr>
+                    <th>嚴重度</th>
+                    <th>發現項目</th>
+                    <th>說明</th>
+                    <th>扣分</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for finding in real_findings %}
+                <tr>
+                    <td><span class="severity severity-{{ finding.severity }}">{{ finding.severity }}</span></td>
+                    <td>{{ finding.title }}</td>
+                    <td>{{ finding.description }}</td>
+                    <td>-{{ finding.score_impact }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+        {% elif module.findings %}
         <table>
             <thead>
                 <tr>
@@ -134,7 +199,9 @@
             </tbody>
         </table>
         {% else %}
-        <p style="color: #48bb78; margin-top: 0.5rem;">未發現風險項目</p>
+        <div class="module-alert alert-pass">
+            <strong>檢測通過，未發現風險項目</strong>
+        </div>
         {% endif %}
     </div>
     {% endfor %}

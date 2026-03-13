@@ -8,6 +8,77 @@ from cypulse.analysis.ip_reputation import IPReputationModule
 from cypulse.models import Asset, Assets
 
 
+# ---------------------------------------------------------------------------
+# Mock helpers
+# ---------------------------------------------------------------------------
+
+def _mock_shodan_response(vulns: list[str] | None = None, ports: list[int] | None = None) -> MagicMock:
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "cpes": [],
+        "hostnames": [],
+        "ip": "93.184.216.34",
+        "ports": ports or [],
+        "tags": [],
+        "vulns": vulns or [],
+    }
+    return mock_resp
+
+
+def _mock_greynoise_response(
+    classification: str = "unknown",
+    noise: bool = False,
+    riot: bool = False,
+    name: str = "N/A",
+) -> MagicMock:
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "ip": "93.184.216.34",
+        "noise": noise,
+        "riot": riot,
+        "classification": classification,
+        "name": name,
+        "link": "https://viz.greynoise.io/ip/93.184.216.34",
+        "last_seen": "2026-03-13",
+        "message": "Success",
+    }
+    return mock_resp
+
+
+def _mock_abuseipdb_response(abuse_score: int = 0, total_reports: int = 0) -> MagicMock:
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "data": {
+            "abuseConfidenceScore": abuse_score,
+            "totalReports": total_reports,
+        }
+    }
+    return mock_resp
+
+
+def _route_requests(shodan_resp=None, greynoise_resp=None, abuseipdb_resp=None):
+    """回傳一個 side_effect function，根據 URL 分派對應的 mock response。"""
+    def side_effect(*args, **kwargs):
+        url = args[0] if args else kwargs.get("url", "")
+        if "internetdb.shodan.io" in url:
+            if shodan_resp is None:
+                raise Exception("shodan down")
+            return shodan_resp
+        elif "greynoise.io" in url:
+            if greynoise_resp is None:
+                raise Exception("greynoise down")
+            return greynoise_resp
+        elif "abuseipdb.com" in url:
+            if abuseipdb_resp is None:
+                raise Exception("abuseipdb down")
+            return abuseipdb_resp
+        raise Exception(f"unexpected URL: {url}")
+    return side_effect
+
+
 class TestIPReputationModule:
     # ------------------------------------------------------------------
     # 模組基本資訊
@@ -21,176 +92,259 @@ class TestIPReputationModule:
         assert m.max_score() == 15
 
     # ------------------------------------------------------------------
-    # 無 API Key 情境
+    # 無 API Key — 仍可透過 Shodan + GreyNoise 執行
     # ------------------------------------------------------------------
 
-    def test_no_api_key(self, sample_assets):
-        """未設定 ABUSEIPDB_API_KEY 時，score=0、status=error，並回傳 info finding。"""
+    def test_no_api_key_still_runs(self, sample_assets):
+        """未設定 ABUSEIPDB_API_KEY 時，仍透過免費來源執行，status=success。"""
         m = IPReputationModule()
+        shodan_resp = _mock_shodan_response()
+        greynoise_resp = _mock_greynoise_response()
+
         with patch.dict(os.environ, {}, clear=True):
-            # 確保 key 不存在
             os.environ.pop("ABUSEIPDB_API_KEY", None)
-            result = m.run(sample_assets)
-
-        assert result.module_id == "M2"
-        assert result.score == 0
-        assert result.status == "error"
-        assert len(result.findings) == 1
-        assert result.findings[0].severity == "info"
-        # title 包含 "AbuseIPDB API key"，description 包含環境變數名稱
-        assert "AbuseIPDB" in result.findings[0].title
-        assert "ABUSEIPDB_API_KEY" in result.findings[0].description
-
-    # ------------------------------------------------------------------
-    # 高風險 IP（abuse score > 50）
-    # ------------------------------------------------------------------
-
-    def test_high_abuse_score(self, sample_assets):
-        """API 回傳 abuseConfidenceScore > 50 時，產生 high severity finding，score_impact=10。"""
-        m = IPReputationModule()
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {
-            "data": {
-                "abuseConfidenceScore": 85,
-                "totalReports": 42,
-            }
-        }
-
-        with patch.dict(os.environ, {"ABUSEIPDB_API_KEY": "test-key"}):
-            with patch("requests.get", return_value=mock_resp):
-                result = m.run(sample_assets)
-
-        assert result.status == "success"
-        assert len(result.findings) == 1
-        finding = result.findings[0]
-        assert finding.severity == "high"
-        assert finding.score_impact == 10
-        # score 應從 max_score 扣除 score_impact
-        assert result.score == m.max_score() - 10
-
-    # ------------------------------------------------------------------
-    # 中風險 IP（20 < abuse score <= 50）
-    # ------------------------------------------------------------------
-
-    def test_medium_abuse_score(self, sample_assets):
-        """API 回傳 20 < abuseConfidenceScore <= 50 時，產生 medium severity finding，score_impact=5。"""
-        m = IPReputationModule()
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {
-            "data": {
-                "abuseConfidenceScore": 35,
-                "totalReports": 5,
-            }
-        }
-
-        with patch.dict(os.environ, {"ABUSEIPDB_API_KEY": "test-key"}):
-            with patch("requests.get", return_value=mock_resp):
-                result = m.run(sample_assets)
-
-        assert result.status == "success"
-        assert len(result.findings) == 1
-        finding = result.findings[0]
-        assert finding.severity == "medium"
-        assert finding.score_impact == 5
-        assert result.score == m.max_score() - 5
-
-    # ------------------------------------------------------------------
-    # 乾淨 IP（abuse score <= 20）
-    # ------------------------------------------------------------------
-
-    def test_clean_ip(self, sample_assets):
-        """API 回傳 abuseConfidenceScore <= 20 時，不產生 finding，score 維持滿分。"""
-        m = IPReputationModule()
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {
-            "data": {
-                "abuseConfidenceScore": 0,
-                "totalReports": 0,
-            }
-        }
-
-        with patch.dict(os.environ, {"ABUSEIPDB_API_KEY": "test-key"}):
-            with patch("requests.get", return_value=mock_resp):
+            with patch("requests.get", side_effect=_route_requests(shodan_resp, greynoise_resp)):
                 result = m.run(sample_assets)
 
         assert result.status == "success"
         assert result.score == m.max_score()
+
+    # ------------------------------------------------------------------
+    # Shodan InternetDB — 弱點偵測
+    # ------------------------------------------------------------------
+
+    def test_shodan_vulns_high(self, sample_assets):
+        """Shodan 回報 >5 個 CVE 時，severity=high。"""
+        m = IPReputationModule()
+        vulns = [f"CVE-2024-{i}" for i in range(8)]
+        shodan_resp = _mock_shodan_response(vulns=vulns)
+        greynoise_resp = _mock_greynoise_response()
+
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("ABUSEIPDB_API_KEY", None)
+            with patch("requests.get", side_effect=_route_requests(shodan_resp, greynoise_resp)):
+                result = m.run(sample_assets)
+
+        shodan_findings = [f for f in result.findings if "弱點" in f.title]
+        assert len(shodan_findings) == 1
+        assert shodan_findings[0].severity == "high"
+        assert shodan_findings[0].score_impact == 5  # min(5, 8)
+
+    def test_shodan_vulns_medium(self, sample_assets):
+        """Shodan 回報 1-5 個 CVE 時，severity=medium。"""
+        m = IPReputationModule()
+        vulns = ["CVE-2024-1234", "CVE-2024-5678"]
+        shodan_resp = _mock_shodan_response(vulns=vulns)
+        greynoise_resp = _mock_greynoise_response()
+
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("ABUSEIPDB_API_KEY", None)
+            with patch("requests.get", side_effect=_route_requests(shodan_resp, greynoise_resp)):
+                result = m.run(sample_assets)
+
+        shodan_findings = [f for f in result.findings if "弱點" in f.title]
+        assert len(shodan_findings) == 1
+        assert shodan_findings[0].severity == "medium"
+        assert shodan_findings[0].score_impact == 2
+
+    def test_shodan_no_vulns(self, sample_assets):
+        """Shodan 無弱點時，不產生 finding。"""
+        m = IPReputationModule()
+        shodan_resp = _mock_shodan_response(vulns=[])
+        greynoise_resp = _mock_greynoise_response()
+
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("ABUSEIPDB_API_KEY", None)
+            with patch("requests.get", side_effect=_route_requests(shodan_resp, greynoise_resp)):
+                result = m.run(sample_assets)
+
+        shodan_findings = [f for f in result.findings if "弱點" in f.title]
+        assert len(shodan_findings) == 0
+
+    def test_shodan_error_independent(self, sample_assets):
+        """Shodan 失敗時，不影響 GreyNoise。"""
+        m = IPReputationModule()
+        greynoise_resp = _mock_greynoise_response(classification="malicious", name="Botnet")
+
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("ABUSEIPDB_API_KEY", None)
+            with patch("requests.get", side_effect=_route_requests(None, greynoise_resp)):
+                result = m.run(sample_assets)
+
+        assert result.status == "success"
+        gn_findings = [f for f in result.findings if "GreyNoise" in f.title]
+        assert len(gn_findings) == 1
+
+    # ------------------------------------------------------------------
+    # GreyNoise Community — IP 分類
+    # ------------------------------------------------------------------
+
+    def test_greynoise_malicious(self, sample_assets):
+        """GreyNoise 分類為 malicious 時，severity=high，score_impact=5。"""
+        m = IPReputationModule()
+        shodan_resp = _mock_shodan_response()
+        greynoise_resp = _mock_greynoise_response(classification="malicious", name="Mirai Botnet")
+
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("ABUSEIPDB_API_KEY", None)
+            with patch("requests.get", side_effect=_route_requests(shodan_resp, greynoise_resp)):
+                result = m.run(sample_assets)
+
+        gn_findings = [f for f in result.findings if "GreyNoise" in f.title]
+        assert len(gn_findings) == 1
+        assert gn_findings[0].severity == "high"
+        assert gn_findings[0].score_impact == 5
+
+    def test_greynoise_noise(self, sample_assets):
+        """GreyNoise 偵測到掃描行為（noise=True）時，severity=medium，score_impact=2。"""
+        m = IPReputationModule()
+        shodan_resp = _mock_shodan_response()
+        greynoise_resp = _mock_greynoise_response(noise=True, name="Scanner")
+
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("ABUSEIPDB_API_KEY", None)
+            with patch("requests.get", side_effect=_route_requests(shodan_resp, greynoise_resp)):
+                result = m.run(sample_assets)
+
+        gn_findings = [f for f in result.findings if "掃描" in f.title]
+        assert len(gn_findings) == 1
+        assert gn_findings[0].severity == "medium"
+        assert gn_findings[0].score_impact == 2
+
+    def test_greynoise_benign(self, sample_assets):
+        """GreyNoise 分類為 benign 時，不產生 finding。"""
+        m = IPReputationModule()
+        shodan_resp = _mock_shodan_response()
+        greynoise_resp = _mock_greynoise_response(classification="benign", name="Google DNS")
+
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("ABUSEIPDB_API_KEY", None)
+            with patch("requests.get", side_effect=_route_requests(shodan_resp, greynoise_resp)):
+                result = m.run(sample_assets)
+
+        gn_findings = [f for f in result.findings if "GreyNoise" in f.title or "掃描" in f.title]
+        assert len(gn_findings) == 0
+
+    def test_greynoise_error_independent(self, sample_assets):
+        """GreyNoise 失敗時，不影響 Shodan。"""
+        m = IPReputationModule()
+        vulns = ["CVE-2024-1234"]
+        shodan_resp = _mock_shodan_response(vulns=vulns)
+
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("ABUSEIPDB_API_KEY", None)
+            with patch("requests.get", side_effect=_route_requests(shodan_resp, None)):
+                result = m.run(sample_assets)
+
+        assert result.status == "success"
+        shodan_findings = [f for f in result.findings if "弱點" in f.title]
+        assert len(shodan_findings) == 1
+
+    # ------------------------------------------------------------------
+    # AbuseIPDB — 選填加值（有 key 才用）
+    # ------------------------------------------------------------------
+
+    def test_abuseipdb_high_abuse_score(self, sample_assets):
+        """有 API key 且 abuseConfidenceScore > 50 時，產生 high finding。"""
+        m = IPReputationModule()
+        shodan_resp = _mock_shodan_response()
+        greynoise_resp = _mock_greynoise_response()
+        abuseipdb_resp = _mock_abuseipdb_response(abuse_score=85, total_reports=42)
+
+        with patch.dict(os.environ, {"ABUSEIPDB_API_KEY": "test-key"}):
+            with patch("requests.get", side_effect=_route_requests(shodan_resp, greynoise_resp, abuseipdb_resp)):
+                result = m.run(sample_assets)
+
+        abuse_findings = [f for f in result.findings if "AbuseIPDB" in f.title]
+        assert len(abuse_findings) == 1
+        assert abuse_findings[0].severity == "high"
+        assert abuse_findings[0].score_impact == 10
+
+    def test_abuseipdb_medium_abuse_score(self, sample_assets):
+        """有 API key 且 20 < abuseConfidenceScore <= 50 時，產生 medium finding。"""
+        m = IPReputationModule()
+        shodan_resp = _mock_shodan_response()
+        greynoise_resp = _mock_greynoise_response()
+        abuseipdb_resp = _mock_abuseipdb_response(abuse_score=35, total_reports=5)
+
+        with patch.dict(os.environ, {"ABUSEIPDB_API_KEY": "test-key"}):
+            with patch("requests.get", side_effect=_route_requests(shodan_resp, greynoise_resp, abuseipdb_resp)):
+                result = m.run(sample_assets)
+
+        abuse_findings = [f for f in result.findings if "abuse reports" in f.title]
+        assert len(abuse_findings) == 1
+        assert abuse_findings[0].severity == "medium"
+        assert abuse_findings[0].score_impact == 5
+
+    def test_abuseipdb_clean_ip(self, sample_assets):
+        """有 API key 且 abuseConfidenceScore <= 20 時，不產生 finding。"""
+        m = IPReputationModule()
+        shodan_resp = _mock_shodan_response()
+        greynoise_resp = _mock_greynoise_response()
+        abuseipdb_resp = _mock_abuseipdb_response(abuse_score=0)
+
+        with patch.dict(os.environ, {"ABUSEIPDB_API_KEY": "test-key"}):
+            with patch("requests.get", side_effect=_route_requests(shodan_resp, greynoise_resp, abuseipdb_resp)):
+                result = m.run(sample_assets)
+
+        assert result.score == m.max_score()
         assert len(result.findings) == 0
 
     # ------------------------------------------------------------------
-    # 無 IP 資產（空 subdomains）
+    # 無 IP 資產
     # ------------------------------------------------------------------
 
     def test_no_ips(self):
-        """subdomains 中無任何 IP 時，score=max_score，不產生 finding。"""
+        """subdomains 中無任何 IP 時，score=max_score。"""
         assets = Assets(
             domain="example.com",
             timestamp="test",
-            subdomains=[
-                Asset(subdomain="www.example.com"),  # ip 預設為 None
-            ],
+            subdomains=[Asset(subdomain="www.example.com")],
         )
         m = IPReputationModule()
 
-        with patch.dict(os.environ, {"ABUSEIPDB_API_KEY": "test-key"}):
-            # requests.get 不應被呼叫
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("ABUSEIPDB_API_KEY", None)
             with patch("requests.get") as mock_get:
                 result = m.run(assets)
                 mock_get.assert_not_called()
 
         assert result.status == "success"
         assert result.score == m.max_score()
-        assert len(result.findings) == 0
 
     def test_empty_subdomains(self):
-        """subdomains 完全為空時，score=max_score，不產生 finding。"""
+        """subdomains 完全為空時，score=max_score。"""
         assets = Assets(domain="example.com", timestamp="test", subdomains=[])
         m = IPReputationModule()
 
-        with patch.dict(os.environ, {"ABUSEIPDB_API_KEY": "test-key"}):
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("ABUSEIPDB_API_KEY", None)
             with patch("requests.get") as mock_get:
                 result = m.run(assets)
                 mock_get.assert_not_called()
 
         assert result.status == "success"
         assert result.score == m.max_score()
-        assert len(result.findings) == 0
 
     # ------------------------------------------------------------------
-    # API 請求失敗
+    # 全部 API 失敗
     # ------------------------------------------------------------------
 
-    def test_api_error_non_200_status(self, sample_assets):
-        """API 回傳非 200 狀態碼時，_check_abuseipdb 回傳 None，不產生 finding。"""
+    def test_all_apis_fail(self, sample_assets):
+        """所有 API 都失敗時，score=max_score，不崩潰。"""
         m = IPReputationModule()
-        mock_resp = MagicMock()
-        mock_resp.status_code = 429  # Too Many Requests
 
-        with patch.dict(os.environ, {"ABUSEIPDB_API_KEY": "test-key"}):
-            with patch("requests.get", return_value=mock_resp):
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("ABUSEIPDB_API_KEY", None)
+            with patch("requests.get", side_effect=Exception("network down")):
                 result = m.run(sample_assets)
 
         assert result.status == "success"
         assert result.score == m.max_score()
-        assert len(result.findings) == 0
-
-    def test_api_error_request_exception(self, sample_assets):
-        """requests.get 拋出例外時，_check_abuseipdb 回傳 None，不產生 finding，不崩潰。"""
-        m = IPReputationModule()
-
-        with patch.dict(os.environ, {"ABUSEIPDB_API_KEY": "test-key"}):
-            with patch("requests.get", side_effect=Exception("連線逾時")):
-                result = m.run(sample_assets)
-
-        assert result.status == "success"
-        assert result.score == m.max_score()
-        assert len(result.findings) == 0
+        assert result.findings == []
 
     # ------------------------------------------------------------------
-    # score 不得低於 0（防止負分）
+    # score 不得低於 0
     # ------------------------------------------------------------------
 
     def test_score_floor_at_zero(self):
@@ -204,14 +358,77 @@ class TestIPReputationModule:
             ],
         )
         m = IPReputationModule()
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {
-            "data": {"abuseConfidenceScore": 99, "totalReports": 100}
-        }
+        vulns = [f"CVE-2024-{i}" for i in range(10)]
+        shodan_resp = _mock_shodan_response(vulns=vulns)
+        greynoise_resp = _mock_greynoise_response(classification="malicious", name="Botnet")
 
-        with patch.dict(os.environ, {"ABUSEIPDB_API_KEY": "test-key"}):
-            with patch("requests.get", return_value=mock_resp):
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("ABUSEIPDB_API_KEY", None)
+            with patch("requests.get", side_effect=_route_requests(shodan_resp, greynoise_resp)):
                 result = m.run(assets)
 
         assert result.score >= 0
+
+    # ------------------------------------------------------------------
+    # 三來源組合
+    # ------------------------------------------------------------------
+
+    def test_all_three_sources(self, sample_assets):
+        """三來源同時有結果時，findings 合併，分數正確扣減。"""
+        m = IPReputationModule()
+        shodan_resp = _mock_shodan_response(vulns=["CVE-2024-1234", "CVE-2024-5678"])
+        greynoise_resp = _mock_greynoise_response(classification="malicious", name="Botnet")
+        abuseipdb_resp = _mock_abuseipdb_response(abuse_score=85, total_reports=42)
+
+        with patch.dict(os.environ, {"ABUSEIPDB_API_KEY": "test-key"}):
+            with patch("requests.get", side_effect=_route_requests(shodan_resp, greynoise_resp, abuseipdb_resp)):
+                result = m.run(sample_assets)
+
+        assert len(result.findings) == 3
+        # Shodan: 2 vulns → impact=2, GreyNoise: malicious → impact=5, AbuseIPDB: high → impact=10
+        # 15 - 2 - 5 - 10 = -2 → floor at 0
+        assert result.score == 0
+
+    # ------------------------------------------------------------------
+    # 內部方法單元測試
+    # ------------------------------------------------------------------
+
+    def test_check_shodan_internetdb_returns_findings(self):
+        """_check_shodan_internetdb 有 CVE 時回傳 findings。"""
+        m = IPReputationModule()
+        mock_resp = _mock_shodan_response(vulns=["CVE-2024-1234"])
+
+        with patch("requests.get", return_value=mock_resp):
+            findings = m._check_shodan_internetdb("1.2.3.4")
+
+        assert len(findings) == 1
+        assert "CVE-2024-1234" in findings[0].evidence
+
+    def test_check_shodan_internetdb_empty_on_error(self):
+        """_check_shodan_internetdb 失敗時回傳空清單。"""
+        m = IPReputationModule()
+
+        with patch("requests.get", side_effect=RuntimeError("fail")):
+            findings = m._check_shodan_internetdb("1.2.3.4")
+
+        assert findings == []
+
+    def test_check_greynoise_returns_finding_on_malicious(self):
+        """_check_greynoise malicious 時回傳 finding。"""
+        m = IPReputationModule()
+        mock_resp = _mock_greynoise_response(classification="malicious", name="Botnet")
+
+        with patch("requests.get", return_value=mock_resp):
+            finding = m._check_greynoise("1.2.3.4")
+
+        assert finding is not None
+        assert finding.severity == "high"
+
+    def test_check_greynoise_returns_none_on_error(self):
+        """_check_greynoise 失敗時回傳 None。"""
+        m = IPReputationModule()
+
+        with patch("requests.get", side_effect=RuntimeError("fail")):
+            finding = m._check_greynoise("1.2.3.4")
+
+        assert finding is None

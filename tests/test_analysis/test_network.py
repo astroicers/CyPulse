@@ -172,11 +172,11 @@ class TestNetworkSecurityModule:
             # 不應拋出例外
             result = m.run(sample_assets)
 
-        # 模組應正常完成，status 仍為 success（例外在 _run_nmap 內部被捕獲）
+        # 模組應正常完成，nmap 全部失敗時 status 為 partial
         assert result is not None
         assert result.module_id == "M3"
-        # nmap 例外不影響 run_nmap 回傳空 list，status 仍為 success
-        assert result.status == "success"
+        # nmap 例外導致所有 IP 失敗，status 應為 partial
+        assert result.status == "partial"
 
     def test_nmap_timeout_exception(self, sample_assets):
         """nmap subprocess.TimeoutExpired 亦應被捕獲，不崩潰。"""

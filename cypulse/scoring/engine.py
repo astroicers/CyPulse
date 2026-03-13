@@ -25,7 +25,14 @@ class ScoringEngine:
             max_score = weight_info.get("max_score", 0)
             deduction = max_score - module_result.score
 
-            if deduction > 0:
+            if module_result.status == "skipped":
+                module_name = weight_info.get("name", mid)
+                explanations.append(ScoreExplanation(
+                    module_id=mid,
+                    reason=f"{module_name} 未執行（缺少 API 金鑰）",
+                    deduction=0,
+                ))
+            elif deduction > 0:
                 if module_result.status in ("error", "partial"):
                     module_name = weight_info.get("name", mid)
                     explanations.append(ScoreExplanation(

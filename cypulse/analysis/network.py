@@ -43,7 +43,7 @@ class NetworkSecurityModule(AnalysisModule):
                     score = max(0, score - 5)
 
         # Run nmap for service detection if available
-        nmap_findings = self._run_nmap(assets)
+        nmap_findings, failed_ips = self._run_nmap(assets)
         status = "success"
         if nmap_findings is None:
             status = "partial"
@@ -56,6 +56,13 @@ class NetworkSecurityModule(AnalysisModule):
             for nf in nmap_findings:
                 findings.append(nf)
                 score = max(0, score - nf.score_impact)
+            if failed_ips:
+                status = "partial"
+                findings.append(Finding(
+                    severity="info",
+                    title=f"nmap 掃描失敗 ({len(failed_ips)} IPs)",
+                    description=f"以下 IP 掃描超時或失敗: {', '.join(failed_ips)}，結果可能不完整",
+                ))
 
         elapsed = time.time() - start
         return ModuleResult(
@@ -69,12 +76,13 @@ class NetworkSecurityModule(AnalysisModule):
             status=status,
         )
 
-    def _run_nmap(self, assets: Assets) -> list[Finding] | None:
+    def _run_nmap(self, assets: Assets) -> tuple[list[Finding] | None, list[str]]:
         if not check_tool("nmap"):
             logger.warning("nmap_not_found")
-            return None
+            return None, []
 
         findings = []
+        failed_ips = []
         live_ips = set()
         for asset in assets.subdomains:
             if asset.ip:
@@ -84,21 +92,33 @@ class NetworkSecurityModule(AnalysisModule):
             try:
                 result = run_cmd(
                     ["nmap", "-sV", "--script", "default", "-T4", "--top-ports", "20", ip],
-                    timeout=60,
+                    timeout=120,
                     check=False,
                 )
-                # Parse nmap output for CVEs
-                for line in result.stdout.splitlines():
-                    if "CVE-" in line:
-                        cve = line.strip()
-                        findings.append(Finding(
-                            severity="high",
-                            title=f"CVE detected on {ip}",
-                            description=cve,
-                            evidence=f"{ip}: {cve}",
-                            score_impact=5,
-                        ))
-            except Exception as e:
-                logger.error("nmap_failed", ip=ip, error=str(e))
+            except Exception:
+                # 降級重試：減少 ports + 降低掃描速度
+                logger.warning("nmap_fallback_retry", ip=ip)
+                try:
+                    result = run_cmd(
+                        ["nmap", "-sV", "-T3", "--top-ports", "10", ip],
+                        timeout=120,
+                        check=False,
+                    )
+                except Exception as e:
+                    logger.error("nmap_failed", ip=ip, error=str(e))
+                    failed_ips.append(ip)
+                    continue
 
-        return findings
+            # Parse nmap output for CVEs
+            for line in result.stdout.splitlines():
+                if "CVE-" in line:
+                    cve = line.strip()
+                    findings.append(Finding(
+                        severity="high",
+                        title=f"CVE detected on {ip}",
+                        description=cve,
+                        evidence=f"{ip}: {cve}",
+                        score_impact=5,
+                    ))
+
+        return findings, failed_ips
