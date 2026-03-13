@@ -10,6 +10,7 @@ from cypulse.discovery.amass import AmassTool
 from cypulse.discovery.dnsx import DnsxTool, resolve_subdomains
 from cypulse.discovery.httpx_tool import HttpxTool
 from cypulse.discovery.naabu import NaabuTool
+from cypulse.discovery.web_sources import query_web_sources
 
 logger = structlog.get_logger()
 
@@ -38,11 +39,27 @@ def run_discovery(domain: str, config: dict) -> Assets:
             seen.add(sub)
             all_subdomains.append(sub)
 
+    # Step 1b: Web API fallback sources (free, no tools needed)
+    logger.info("discovery_step", step="web_api_sources")
+    web_results = query_web_sources(domain, config)
+    web_count = 0
+    for item in web_results:
+        sub = item.get("subdomain", "").strip().lower()
+        if sub and sub not in seen:
+            seen.add(sub)
+            all_subdomains.append(sub)
+            web_count += 1
+
     # Always include the base domain
     if domain.lower() not in seen:
         all_subdomains.insert(0, domain.lower())
 
-    logger.info("discovery_subdomains", total=len(all_subdomains))
+    logger.info(
+        "discovery_subdomains",
+        total=len(all_subdomains),
+        tool_count=len(sf_results) + len(am_results),
+        web_count=web_count,
+    )
 
     # Step 2: DNS resolution (dnsx)
     logger.info("discovery_step", step="dns_resolution")
@@ -61,13 +78,13 @@ def run_discovery(domain: str, config: dict) -> Assets:
     port_input = "\n".join(live_hosts)
     port_results = naabu.run(port_input, config)
 
-    # Build host -> ports mapping
-    port_map: dict[str, list[int]] = {}
+    # Build host -> ports mapping (deduplicated)
+    port_map: dict[str, set[int]] = {}
     for r in port_results:
         host = r.get("host", "").lower()
         port = r.get("port")
         if host and port:
-            port_map.setdefault(host, []).append(port)
+            port_map.setdefault(host, set()).add(port)
 
     # Step 4: HTTP probing (httpx)
     logger.info("discovery_step", step="http_probing")
@@ -89,7 +106,7 @@ def run_discovery(domain: str, config: dict) -> Assets:
         asset = Asset(
             subdomain=sub,
             ip=dns_map.get(sub),
-            ports=sorted(port_map.get(sub, [])),
+            ports=sorted(port_map.get(sub, set())),
             http_status=http_info.get("http_status"),
             http_title=http_info.get("http_title"),
             tls_version=http_info.get("tls_version"),
