@@ -28,7 +28,7 @@ def _extract_security_headers(raw_headers: dict) -> dict:
     for header_name in _SECURITY_HEADER_NAMES:
         snake_key = header_name.replace("-", "_")
         value = raw_headers.get(snake_key)
-        if value:
+        if value is not None:
             result[header_name] = value
     return result
 

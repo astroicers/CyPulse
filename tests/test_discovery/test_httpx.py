@@ -49,6 +49,7 @@ class TestHttpxTool:
         assert headers["strict-transport-security"] == "max-age=31536000"
         assert headers["content-security-policy"] == "default-src 'self'"
         assert headers["x-frame-options"] == "DENY"
+        assert len(headers) == 3
         # non-security headers should NOT be included
         assert "server" not in headers
 
