@@ -1,0 +1,13 @@
+.git/
+.asp/
+.claude/
+tests/
+docs/
+*.md
+!requirements.txt
+__pycache__/
+*.pyc
+.env
+data/
+.ai_profile
+CyPulse_Roadmap.docx

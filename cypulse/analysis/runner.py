@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import structlog
 from cypulse.models import Assets, Findings, ModuleResult
 from cypulse.analysis.web_security import WebSecurityModule
@@ -24,39 +25,54 @@ ALL_MODULES = [
 ]
 
 
-def run_analysis(assets: Assets, module_ids: list[str] | None = None) -> Findings:
-    """Run all (or selected) analysis modules."""
-    results: list[ModuleResult] = []
+def _run_single_module(module, assets: Assets) -> ModuleResult:
+    """執行單一分析模組（供平行化使用）。"""
+    logger.info("analysis_start", module=module.module_id(), name=module.module_name())
+    try:
+        result = module.run(assets)
+        logger.info(
+            "analysis_complete",
+            module=module.module_id(),
+            score=result.score,
+            max=result.max_score,
+            findings=len(result.findings),
+            time=f"{result.execution_time:.1f}s",
+        )
+        return result
+    except Exception as e:
+        logger.error("analysis_failed", module=module.module_id(), error=str(e))
+        return ModuleResult(
+            module_id=module.module_id(),
+            module_name=module.module_name(),
+            score=0,
+            max_score=module.max_score(),
+            findings=[],
+            raw_data={"error": str(e)},
+            execution_time=0.0,
+            status="error",
+        )
 
+
+def run_analysis(assets: Assets, module_ids: list[str] | None = None) -> Findings:
+    """Run all (or selected) analysis modules in parallel."""
+    modules = []
     for module_cls in ALL_MODULES:
         module = module_cls()
         if module_ids and module.module_id() not in module_ids:
             continue
+        modules.append(module)
 
-        logger.info("analysis_start", module=module.module_id(), name=module.module_name())
-        try:
-            result = module.run(assets)
-            results.append(result)
-            logger.info(
-                "analysis_complete",
-                module=module.module_id(),
-                score=result.score,
-                max=result.max_score,
-                findings=len(result.findings),
-                time=f"{result.execution_time:.1f}s",
-            )
-        except Exception as e:
-            logger.error("analysis_failed", module=module.module_id(), error=str(e))
-            results.append(ModuleResult(
-                module_id=module.module_id(),
-                module_name=module.module_name(),
-                score=0,
-                max_score=module.max_score(),
-                findings=[],
-                raw_data={"error": str(e)},
-                execution_time=0.0,
-                status="error",
-            ))
+    results: list[ModuleResult] = []
+    with ThreadPoolExecutor(max_workers=len(modules)) as executor:
+        future_to_module = {
+            executor.submit(_run_single_module, m, assets): m
+            for m in modules
+        }
+        for future in as_completed(future_to_module):
+            results.append(future.result())
+
+    # 按 module_id 排序確保輸出一致
+    results.sort(key=lambda r: r.module_id)
 
     return Findings(
         domain=assets.domain,

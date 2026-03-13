@@ -80,11 +80,11 @@ class NetworkSecurityModule(AnalysisModule):
             if asset.ip:
                 live_ips.add(asset.ip)
 
-        for ip in list(live_ips)[:10]:  # Limit to 10 IPs
+        for ip in list(live_ips)[:5]:  # Limit to 5 IPs
             try:
                 result = run_cmd(
-                    ["nmap", "-sV", "--script", "vuln", "-T4", "--top-ports", "100", ip],
-                    timeout=120,
+                    ["nmap", "-sV", "--script", "default", "-T4", "--top-ports", "20", ip],
+                    timeout=60,
                     check=False,
                 )
                 # Parse nmap output for CVEs

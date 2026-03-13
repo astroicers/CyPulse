@@ -1,6 +1,7 @@
 from __future__ import annotations
 import os
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import structlog
 from cypulse.models import Asset, Assets
@@ -22,8 +23,11 @@ def run_discovery(domain: str, config: dict) -> Assets:
     subfinder = SubfinderTool()
     amass = AmassTool()
 
-    sf_results = subfinder.run(domain, config)
-    am_results = amass.run(domain, config)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        sf_future = executor.submit(subfinder.run, domain, config)
+        am_future = executor.submit(amass.run, domain, config)
+        sf_results = sf_future.result()
+        am_results = am_future.result()
 
     # Merge and deduplicate
     seen = set()
