@@ -29,24 +29,36 @@ class WebSecurityModule(AnalysisModule):
         findings: list[Finding] = []
         score = self.max_score()
 
-        # Check security headers from asset data
-        for asset in assets.subdomains:
-            if not asset.http_status:
-                continue
-            headers = asset.security_headers or {}
-            for header in CRITICAL_HEADERS:
-                normalized = {k.lower(): v for k, v in headers.items()}
-                if not normalized.get(header) and not normalized.get(header.replace("-", "_")):
-                    findings.append(Finding(
-                        severity="medium",
-                        title=f"Missing {header}",
-                        description=f"{asset.subdomain} 缺少 {header} header",
-                        evidence=asset.subdomain,
-                        score_impact=3,
-                    ))
-                    score = max(0, score - 3)
+        # 統計每種 header 缺失的子網域
+        http_assets = [a for a in assets.subdomains if a.http_status]
+        header_missing: dict[str, list[str]] = {h: [] for h in CRITICAL_HEADERS}
 
-            # TLS check
+        for asset in http_assets:
+            headers = asset.security_headers or {}
+            normalized = {k.lower(): v for k, v in headers.items()}
+            for header in CRITICAL_HEADERS:
+                if not normalized.get(header) and not normalized.get(header.replace("-", "_")):
+                    header_missing[header].append(asset.subdomain)
+
+        # 每種 header 產生一筆彙總 finding
+        for header, missing_subs in header_missing.items():
+            if not missing_subs:
+                continue
+            count = len(missing_subs)
+            deduction = min(count, 5)  # 每種 header 最多扣 5 分
+            preview = ", ".join(missing_subs[:5])
+            suffix = f" 等 {count} 個" if count > 5 else ""
+            findings.append(Finding(
+                severity="medium",
+                title=f"Missing {header}",
+                description=f"{count} 個子網域缺少 {header} header（{preview}{suffix}）",
+                evidence=", ".join(missing_subs[:10]),
+                score_impact=deduction,
+            ))
+            score = max(0, score - deduction)
+
+        # TLS check (per subdomain)
+        for asset in http_assets:
             if asset.tls_version and asset.tls_version < "TLSv1.2":
                 findings.append(Finding(
                     severity="high",
@@ -101,27 +113,44 @@ class WebSecurityModule(AnalysisModule):
                 f.write("\n".join(live_hosts))
                 hosts_file = f.name
             try:
-                result = sp.run(
-                    ["nuclei", "-l", hosts_file, "-json", "-silent",
-                     "-tags", "misconfig,exposure,tech"],
-                    capture_output=True, text=True, timeout=300,
-                )
-                for line in result.stdout.strip().splitlines():
-                    if not line.strip():
-                        continue
+                nuclei_cmd = [
+                    "nuclei", "-l", hosts_file, "-json", "-silent",
+                    "-tags", "misconfig,exposure,tech",
+                ]
+                max_attempts = 2
+                result = None
+                for attempt in range(max_attempts):
                     try:
-                        data = json.loads(line)
-                        sev = data.get("info", {}).get("severity", "info")
-                        impact = {"critical": 8, "high": 5, "medium": 3, "low": 1, "info": 0}.get(sev, 0)
-                        findings.append(Finding(
-                            severity=sev,
-                            title=data.get("info", {}).get("name", "Unknown"),
-                            description=data.get("info", {}).get("description", ""),
-                            evidence=data.get("matched-at", ""),
-                            score_impact=impact,
-                        ))
-                    except json.JSONDecodeError:
-                        continue
+                        result = sp.run(
+                            nuclei_cmd,
+                            capture_output=True, text=True, timeout=300,
+                        )
+                        break
+                    except Exception as e:
+                        if attempt < max_attempts - 1:
+                            logger.warning("nuclei_retry", attempt=attempt + 1, error=str(e))
+                            import time
+                            time.sleep(5)
+                        else:
+                            logger.error("nuclei_failed", error=str(e))
+
+                if result:
+                    for line in result.stdout.strip().splitlines():
+                        if not line.strip():
+                            continue
+                        try:
+                            data = json.loads(line)
+                            sev = data.get("info", {}).get("severity", "info")
+                            impact = {"critical": 8, "high": 5, "medium": 3, "low": 1, "info": 0}.get(sev, 0)
+                            findings.append(Finding(
+                                severity=sev,
+                                title=data.get("info", {}).get("name", "Unknown"),
+                                description=data.get("info", {}).get("description", ""),
+                                evidence=data.get("matched-at", ""),
+                                score_impact=impact,
+                            ))
+                        except json.JSONDecodeError:
+                            continue
             finally:
                 os.unlink(hosts_file)
         except Exception as e:
