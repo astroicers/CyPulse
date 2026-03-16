@@ -5,6 +5,7 @@ import structlog
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from cypulse.models import Score, Findings, Assets
 from cypulse.scoring.weights import WEIGHTS
+from cypulse.remediation.playbooks import get_remediation
 
 logger = structlog.get_logger()
 
@@ -24,6 +25,14 @@ class ReportGenerator:
         os.makedirs(output_dir, exist_ok=True)
         template = self.env.get_template("report.html")
 
+        # 建立 finding title → remediation 的查找表
+        remediation_map: dict[str, dict] = {}
+        for module in findings.modules:
+            for finding in module.findings:
+                r = get_remediation(finding.title)
+                if r is not None:
+                    remediation_map[finding.title] = r
+
         html = template.render(
             domain=assets.domain,
             timestamp=assets.timestamp,
@@ -31,6 +40,7 @@ class ReportGenerator:
             findings=findings,
             assets=assets,
             weights=WEIGHTS,
+            remediation_map=remediation_map,
         )
 
         path = os.path.join(output_dir, "report.html")

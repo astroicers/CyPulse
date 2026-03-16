@@ -52,6 +52,12 @@
 
         .footer { text-align: center; margin-top: 3rem; padding: 1rem; color: #a0aec0; font-size: 0.8rem; border-top: 1px solid #e2e8f0; }
 
+        details.remediation-block { margin: 0.25rem 0 0.5rem 1rem; border: 1px solid #bee3f8; border-radius: 6px; background: #ebf8ff; }
+        details.remediation-block summary { padding: 0.4rem 0.75rem; cursor: pointer; font-size: 0.85rem; color: #2b6cb0; font-weight: 600; }
+        details.remediation-block .rem-body { padding: 0.5rem 0.75rem 0.75rem; font-size: 0.85rem; }
+        details.remediation-block ol { margin: 0.25rem 0 0.5rem 1.2rem; }
+        details.remediation-block li { margin-bottom: 0.2rem; }
+
         .status-badge { padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-right: 0.5rem; }
         .status-error { background: #fed7d7; color: #c53030; }
         .status-partial { background: #fefcbf; color: #975a16; }
@@ -170,7 +176,24 @@
                 <tr>
                     <td><span class="severity severity-{{ finding.severity }}">{{ finding.severity }}</span></td>
                     <td>{{ finding.title }}</td>
-                    <td>{{ finding.description }}</td>
+                    <td>
+                        {{ finding.description }}
+                        {% if finding.title in remediation_map %}
+                        {% set rem = remediation_map[finding.title] %}
+                        <details class="remediation-block">
+                          <summary>補救建議（{{ rem.priority }} · {{ rem.timeline }}）</summary>
+                          <div class="rem-body">
+                            <p><strong>負責團隊：</strong>{{ rem.target_team }} ／ <strong>工作量：</strong>{{ rem.effort }}</p>
+                            <ol>
+                              {% for step in rem.steps %}
+                              <li>{{ step.action }}{% if step.command %} — <code>{{ step.command }}</code>{% endif %}</li>
+                              {% endfor %}
+                            </ol>
+                            <p><strong>驗收：</strong>{{ rem.success_criteria }}</p>
+                          </div>
+                        </details>
+                        {% endif %}
+                    </td>
                     <td>-{{ finding.score_impact }}</td>
                 </tr>
                 {% endfor %}
@@ -192,7 +215,24 @@
                 <tr>
                     <td><span class="severity severity-{{ finding.severity }}">{{ finding.severity }}</span></td>
                     <td>{{ finding.title }}</td>
-                    <td>{{ finding.description }}</td>
+                    <td>
+                        {{ finding.description }}
+                        {% if finding.title in remediation_map %}
+                        {% set rem = remediation_map[finding.title] %}
+                        <details class="remediation-block">
+                          <summary>補救建議（{{ rem.priority }} · {{ rem.timeline }}）</summary>
+                          <div class="rem-body">
+                            <p><strong>負責團隊：</strong>{{ rem.target_team }} ／ <strong>工作量：</strong>{{ rem.effort }}</p>
+                            <ol>
+                              {% for step in rem.steps %}
+                              <li>{{ step.action }}{% if step.command %} — <code>{{ step.command }}</code>{% endif %}</li>
+                              {% endfor %}
+                            </ol>
+                            <p><strong>驗收：</strong>{{ rem.success_criteria }}</p>
+                          </div>
+                        </details>
+                        {% endif %}
+                    </td>
                     <td>-{{ finding.score_impact }}</td>
                 </tr>
                 {% endfor %}
