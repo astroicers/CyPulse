@@ -72,6 +72,69 @@ class TestRunDiscovery:
         assert len(subs) == len(set(subs))
 
 
+class TestPipelineFaultTolerance:
+    @patch("cypulse.discovery.pipeline.HttpxTool")
+    @patch("cypulse.discovery.pipeline.NaabuTool")
+    @patch("cypulse.discovery.pipeline.resolve_subdomains")
+    @patch("cypulse.discovery.pipeline.query_web_sources")
+    @patch("cypulse.discovery.pipeline.AmassTool")
+    @patch("cypulse.discovery.pipeline.SubfinderTool")
+    def test_pipeline_continues_when_subfinder_fails(
+        self, MockSF, MockAmass, mock_web, mock_resolve, MockNaabu, MockHttpx
+    ):
+        """subfinder 失敗時，amass 結果仍應被採用，不拋出例外。"""
+        sf_instance = MockSF.return_value
+        sf_instance.run.side_effect = Exception("subfinder timeout")
+
+        am_instance = MockAmass.return_value
+        am_instance.run.return_value = [{"subdomain": "sub1.example.com"}]
+
+        mock_web.return_value = []
+        mock_resolve.return_value = [
+            {"subdomain": "example.com", "ip": "1.2.3.4"},
+            {"subdomain": "sub1.example.com", "ip": "1.2.3.5"},
+        ]
+        naabu_instance = MockNaabu.return_value
+        naabu_instance.run.return_value = []
+        httpx_instance = MockHttpx.return_value
+        httpx_instance.run.return_value = []
+
+        # 不應拋出例外
+        assets = run_discovery("example.com", {})
+        subs = [a.subdomain for a in assets.subdomains]
+        assert "sub1.example.com" in subs
+
+    @patch("cypulse.discovery.pipeline.HttpxTool")
+    @patch("cypulse.discovery.pipeline.NaabuTool")
+    @patch("cypulse.discovery.pipeline.resolve_subdomains")
+    @patch("cypulse.discovery.pipeline.query_web_sources")
+    @patch("cypulse.discovery.pipeline.AmassTool")
+    @patch("cypulse.discovery.pipeline.SubfinderTool")
+    def test_pipeline_continues_when_amass_fails(
+        self, MockSF, MockAmass, mock_web, mock_resolve, MockNaabu, MockHttpx
+    ):
+        """amass 失敗時，subfinder 結果仍應被採用，不拋出例外。"""
+        sf_instance = MockSF.return_value
+        sf_instance.run.return_value = [{"subdomain": "sf1.example.com"}]
+
+        am_instance = MockAmass.return_value
+        am_instance.run.side_effect = Exception("amass process error")
+
+        mock_web.return_value = []
+        mock_resolve.return_value = [
+            {"subdomain": "example.com", "ip": "1.2.3.4"},
+            {"subdomain": "sf1.example.com", "ip": "1.2.3.5"},
+        ]
+        naabu_instance = MockNaabu.return_value
+        naabu_instance.run.return_value = []
+        httpx_instance = MockHttpx.return_value
+        httpx_instance.run.return_value = []
+
+        assets = run_discovery("example.com", {})
+        subs = [a.subdomain for a in assets.subdomains]
+        assert "sf1.example.com" in subs
+
+
 class TestPortDedup:
     @patch("cypulse.discovery.pipeline.HttpxTool")
     @patch("cypulse.discovery.pipeline.NaabuTool")

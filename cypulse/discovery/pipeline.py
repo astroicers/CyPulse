@@ -1,7 +1,7 @@
 from __future__ import annotations
 import os
 import json
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 import structlog
 from cypulse.models import Asset, Assets
@@ -24,16 +24,25 @@ def run_discovery(domain: str, config: dict) -> Assets:
     subfinder = SubfinderTool()
     amass = AmassTool()
 
+    tool_results: list[list] = []
     with ThreadPoolExecutor(max_workers=2) as executor:
-        sf_future = executor.submit(subfinder.run, domain, config)
-        am_future = executor.submit(amass.run, domain, config)
-        sf_results = sf_future.result()
-        am_results = am_future.result()
+        future_to_name = {
+            executor.submit(subfinder.run, domain, config): "subfinder",
+            executor.submit(amass.run, domain, config): "amass",
+        }
+        for future in as_completed(future_to_name, timeout=180):
+            name = future_to_name[future]
+            try:
+                results = future.result(timeout=5)
+                tool_results.append(results)
+                logger.info("tool_completed", tool=name, count=len(results))
+            except Exception as e:
+                logger.warning("tool_failed_gracefully", tool=name, error=str(e))
 
     # Merge and deduplicate
     seen = set()
     all_subdomains: list[str] = []
-    for item in sf_results + am_results:
+    for item in [item for sublist in tool_results for item in sublist]:
         sub = item.get("subdomain", "").strip().lower()
         if sub and sub not in seen:
             seen.add(sub)
@@ -57,7 +66,7 @@ def run_discovery(domain: str, config: dict) -> Assets:
     logger.info(
         "discovery_subdomains",
         total=len(all_subdomains),
-        tool_count=len(sf_results) + len(am_results),
+        tool_count=sum(len(r) for r in tool_results),
         web_count=web_count,
     )
 
