@@ -24,26 +24,27 @@ def test_get_grade_a():
 
 def test_get_grade_b():
     assert get_grade(85) == "B"
-    assert get_grade(80) == "B"
+    assert get_grade(75) == "B"
     assert get_grade(89) == "B"
 
 
 def test_get_grade_c():
-    assert get_grade(75) == "C"
-    assert get_grade(70) == "C"
-    assert get_grade(79) == "C"
+    assert get_grade(60) == "C"
+    assert get_grade(67) == "C"
+    assert get_grade(74) == "C"
 
 
 def test_get_grade_d():
     assert get_grade(0) == "D"
-    assert get_grade(50) == "D"
-    assert get_grade(69) == "D"
+    assert get_grade(30) == "D"
+    assert get_grade(59) == "D"
 
 
 def test_get_grade_boundary():
     assert get_grade(90) == "A"
     assert get_grade(89) == "B"
-    assert get_grade(80) == "B"
-    assert get_grade(79) == "C"
-    assert get_grade(70) == "C"
-    assert get_grade(69) == "D"
+    assert get_grade(75) == "B"
+    assert get_grade(74) == "C"
+    assert get_grade(60) == "C"
+    assert get_grade(59) == "D"
+    assert get_grade(0) == "D"

@@ -83,6 +83,7 @@ class NetworkSecurityModule(AnalysisModule):
 
         findings = []
         failed_ips = []
+        seen_cves: set[str] = set()
         live_ips = set()
         for asset in assets.subdomains:
             if asset.ip:
@@ -109,10 +110,17 @@ class NetworkSecurityModule(AnalysisModule):
                     failed_ips.append(ip)
                     continue
 
-            # Parse nmap output for CVEs
+            # Parse nmap output for CVEs（同一 CVE 只計一次）
             for line in result.stdout.splitlines():
                 if "CVE-" in line:
                     cve = line.strip()
+                    # 擷取 CVE ID（格式：CVE-YYYY-NNNNN）
+                    import re
+                    match = re.search(r"CVE-\d{4}-\d+", cve)
+                    cve_id = match.group(0) if match else cve
+                    if cve_id in seen_cves:
+                        continue
+                    seen_cves.add(cve_id)
                     findings.append(Finding(
                         severity="high",
                         title=f"CVE detected on {ip}",

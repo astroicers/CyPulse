@@ -116,6 +116,25 @@ class TestNetworkSecurityModule:
         assert cve_findings[0].score_impact == 5
         assert "CVE-2021-44228" in cve_findings[0].description
 
+    def test_nmap_duplicate_cve_counted_once(self, sample_assets):
+        """nmap 輸出中同一 CVE 出現多次時，只應計分一次。"""
+        mock_result = MagicMock(spec=subprocess.CompletedProcess)
+        mock_result.stdout = (
+            "Starting Nmap 7.94\n"
+            "| CVE-2021-44228: Apache Log4j RCE\n"
+            "| CVE-2021-44228: Apache Log4j RCE (duplicate)\n"
+            "Nmap done.\n"
+        )
+
+        m = NetworkSecurityModule()
+        with patch("cypulse.analysis.network.check_tool", return_value=True), \
+             patch("cypulse.analysis.network.run_cmd", return_value=mock_result):
+            result = m.run(sample_assets)
+
+        cve_findings = [f for f in result.findings if "CVE-2021-44228" in f.description]
+        assert len(cve_findings) == 1, "同一 CVE 不應重複計分"
+        assert result.score == m.max_score() - 5  # 只扣一次
+
     def test_nmap_no_cve(self, sample_assets):
         """nmap 輸出不含 CVE 時，不應產生任何 CVE Finding，分數應為滿分。"""
         mock_result = MagicMock(spec=subprocess.CompletedProcess)
