@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 PLAYBOOKS: dict[str, dict] = {
-    "No SPF Record": {
+    "No SPF record": {
         "priority": "P1",
         "target_team": "Email/IT",
         "timeline": "7 days",
@@ -30,7 +30,7 @@ PLAYBOOKS: dict[str, dict] = {
         ],
         "success_criteria": "dig +short TXT example.com 輸出包含 'v=spf1'",
     },
-    "No DMARC Record": {
+    "No DMARC record": {
         "priority": "P1",
         "target_team": "Email/IT",
         "timeline": "7 days",
@@ -59,7 +59,7 @@ PLAYBOOKS: dict[str, dict] = {
         ],
         "success_criteria": "dig +short TXT _dmarc.example.com 輸出包含 'v=DMARC1'",
     },
-    "Missing DNSSEC": {
+    "DNSSEC not enabled": {
         "priority": "P2",
         "target_team": "DNS/Networking",
         "timeline": "30 days",
@@ -117,7 +117,7 @@ PLAYBOOKS: dict[str, dict] = {
         ],
         "success_criteria": "sslyze 報告顯示只啟用 TLSv1.2 和 TLSv1.3",
     },
-    "Zone Transfer Allowed": {
+    "Zone Transfer allowed": {
         "priority": "P1",
         "target_team": "DNS/Networking",
         "timeline": "24 hours",
@@ -145,6 +145,132 @@ PLAYBOOKS: dict[str, dict] = {
             },
         ],
         "success_criteria": "dig axfr 回傳 'Transfer failed' 或 'REFUSED'",
+    },
+    "Missing strict-transport-security": {
+        "priority": "P1",
+        "target_team": "Web/Security",
+        "timeline": "7 days",
+        "effort": "30 minutes",
+        "steps": [
+            {
+                "step": 1,
+                "action": "確認 Web Server 類型（Nginx/Apache/Caddy）",
+                "command": None,
+            },
+            {
+                "step": 2,
+                "action": "新增 HSTS header",
+                "command": (
+                    'add_header Strict-Transport-Security '
+                    '"max-age=31536000; includeSubDomains" always;'
+                ),
+            },
+            {
+                "step": 3,
+                "action": "重新載入 Web Server",
+                "command": "nginx -s reload",
+            },
+            {
+                "step": 4,
+                "action": "驗證 header",
+                "command": "curl -I https://example.com | grep -i strict",
+            },
+        ],
+        "success_criteria": (
+            "curl 回應包含 Strict-Transport-Security header，max-age ≥ 31536000"
+        ),
+    },
+    "Missing content-security-policy": {
+        "priority": "P2",
+        "target_team": "Web/Security",
+        "timeline": "30 days",
+        "effort": "2-4 hours",
+        "steps": [
+            {
+                "step": 1,
+                "action": "使用 CSP Evaluator 分析現有頁面資源",
+                "command": None,
+            },
+            {
+                "step": 2,
+                "action": "建立初始 CSP（report-only 模式）",
+                "command": (
+                    'add_header Content-Security-Policy-Report-Only '
+                    '"default-src \'self\';";'
+                ),
+            },
+            {
+                "step": 3,
+                "action": "收集 CSP 違規報告 2 週，調整策略",
+                "command": None,
+            },
+            {
+                "step": 4,
+                "action": "切換為強制模式",
+                "command": 'add_header Content-Security-Policy "default-src \'self\';";',
+            },
+        ],
+        "success_criteria": (
+            "curl 回應包含 Content-Security-Policy header，無 unsafe-eval/unsafe-inline"
+        ),
+    },
+    "Missing x-frame-options": {
+        "priority": "P2",
+        "target_team": "Web/Security",
+        "timeline": "7 days",
+        "effort": "30 minutes",
+        "steps": [
+            {
+                "step": 1,
+                "action": "確認頁面是否需要被外部 iframe 嵌入",
+                "command": None,
+            },
+            {
+                "step": 2,
+                "action": "新增 X-Frame-Options header",
+                "command": 'add_header X-Frame-Options "SAMEORIGIN" always;',
+            },
+            {
+                "step": 3,
+                "action": "重新載入 Web Server",
+                "command": "nginx -s reload",
+            },
+            {
+                "step": 4,
+                "action": "驗證 header",
+                "command": "curl -I https://example.com | grep -i x-frame",
+            },
+        ],
+        "success_criteria": "curl 回應包含 X-Frame-Options: SAMEORIGIN 或 DENY",
+    },
+    "DMARC policy is none": {
+        "priority": "P2",
+        "target_team": "Email/IT",
+        "timeline": "14 days",
+        "effort": "1-2 hours",
+        "steps": [
+            {
+                "step": 1,
+                "action": "確認 SPF 和 DKIM 已正確設定",
+                "command": None,
+            },
+            {
+                "step": 2,
+                "action": "將 DMARC policy 改為 quarantine",
+                "command": "v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com; pct=10",
+            },
+            {
+                "step": 3,
+                "action": "觀察 2 週報告，確認合法郵件不受影響",
+                "command": None,
+            },
+            {
+                "step": 4,
+                "action": "收緊至 reject",
+                "command": "v=DMARC1; p=reject; rua=mailto:dmarc@example.com",
+            },
+        ],
+        "success_criteria": "DMARC 記錄 p= 值為 quarantine 或 reject",
     },
 }
 

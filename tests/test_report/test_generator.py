@@ -65,7 +65,7 @@ class TestReportGenerator:
                     module_id="M5", module_name="郵件安全",
                     score=8, max_score=10,
                     findings=[
-                        Finding(severity="high", title="No SPF Record",
+                        Finding(severity="high", title="No SPF record",
                                 description="缺少 SPF 記錄", score_impact=2),
                     ],
                     execution_time=1.0,
