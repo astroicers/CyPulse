@@ -173,8 +173,15 @@ MIT License
 
 ## 相關文件
 
-- [SRS — 軟體需求規格書](docs/SRS.md)
-- [SDS — 軟體設計規格書](docs/SDS.md)
-- [DEPLOY_SPEC — 部署規格書](docs/DEPLOY_SPEC.md)
-- [Architecture — 架構概覽](docs/architecture.md)
-- [ADR-001 — 技術棧選型](docs/adr/ADR-001-initial-technology-stack.md)
+| 文件 | 說明 |
+|------|------|
+| [SRS.md](docs/SRS.md) | 軟體需求規格書 |
+| [SDS.md](docs/SDS.md) | 軟體設計規格書 |
+| [DEPLOY_SPEC.md](docs/DEPLOY_SPEC.md) | 部署規格書 |
+| [architecture.md](docs/architecture.md) | 架構概覽 |
+| [ADR-001](docs/adr/ADR-001-initial-technology-stack.md) | 技術棧選型決策 |
+| [ADR-002](docs/adr/ADR-002-scoring-algorithm.md) | 評分演算法設計決策 |
+| [ADR-003](docs/adr/ADR-003-api-fallback-free-sources.md) | API Fallback 機制決策 |
+| [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | 常見問題排查 |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 貢獻指南 |
+| [CHANGELOG.md](CHANGELOG.md) | 版本變更記錄 |
