@@ -568,6 +568,27 @@ class TestDarkWebModule:
         lc_findings = [f for f in result.findings if "LeakCheck" in f.title]
         assert len(lc_findings) == 0
 
+    def test_same_breach_not_double_counted(self, sample_assets):
+        """同一 breach 名稱出現兩次時，只應計分一次。"""
+        m = DarkWebModule()
+        # HIBP 回傳同名 breach 兩次（例如 API 重複回傳）
+        all_breaches = [
+            {"Name": "DupBreach", "Domain": "example.com", "PwnCount": 100},
+            {"Name": "DupBreach", "Domain": "Example.COM", "PwnCount": 100},
+        ]
+        hibp_resp = _mock_hibp_response(all_breaches)
+        comb_resp = _mock_comb_response(0)
+        lc_resp = _mock_leakcheck_response(0)
+
+        with patch("requests.get", side_effect=[hibp_resp, comb_resp, lc_resp]):
+            result = m.run(sample_assets)
+
+        hibp_findings = [f for f in result.findings if "Breach:" in f.title]
+        breach_titles = [f.title for f in hibp_findings]
+        assert breach_titles.count("Breach: DupBreach") == 1, (
+            "同名 breach 不應重複計分"
+        )
+
     def test_all_three_sources_combined(self, sample_assets):
         """三來源同時有結果時，findings 合併，分數正確扣減。"""
         m = DarkWebModule()

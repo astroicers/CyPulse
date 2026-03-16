@@ -28,17 +28,22 @@ class DarkWebModule(AnalysisModule):
 
         # 來源 1: HIBP 公開清單 — 查域名是否為已知外洩事件來源
         hibp_breaches = self._check_hibp_public(assets.domain)
+        seen_breach_names: set[str] = set()
         for breach in hibp_breaches:
+            breach_name = breach.get("Name", "Unknown")
+            if breach_name in seen_breach_names:
+                continue
+            seen_breach_names.add(breach_name)
             impact = min(3, len(hibp_breaches))
             findings.append(Finding(
                 severity="high",
-                title=f"Breach: {breach.get('Name', 'Unknown')}",
+                title=f"Breach: {breach_name}",
                 description=(
                     f"Domain {assets.domain} 曾發生資料外洩事件: "
-                    f"{breach.get('Name', '')}，"
+                    f"{breach_name}，"
                     f"影響 {breach.get('PwnCount', '未知')} 筆資料"
                 ),
-                evidence=breach.get("Name", ""),
+                evidence=breach_name,
                 score_impact=impact,
             ))
             score = max(0, score - impact)
