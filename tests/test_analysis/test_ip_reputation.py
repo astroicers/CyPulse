@@ -59,7 +59,20 @@ def _mock_abuseipdb_response(abuse_score: int = 0, total_reports: int = 0) -> Ma
     return mock_resp
 
 
-def _route_requests(shodan_resp=None, greynoise_resp=None, abuseipdb_resp=None):
+def _mock_ipapi_response(status="success", country="US", org="AS9924 Taiwan Fixed Network", asn="AS9924", isp="Taiwan Fixed Network") -> MagicMock:
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "status": status,
+        "country": country,
+        "org": org,
+        "as": asn,
+        "isp": isp,
+    }
+    return mock_resp
+
+
+def _route_requests(shodan_resp=None, greynoise_resp=None, abuseipdb_resp=None, ipapi_resp=None):
     """回傳一個 side_effect function，根據 URL 分派對應的 mock response。"""
     def side_effect(*args, **kwargs):
         url = args[0] if args else kwargs.get("url", "")
@@ -75,6 +88,13 @@ def _route_requests(shodan_resp=None, greynoise_resp=None, abuseipdb_resp=None):
             if abuseipdb_resp is None:
                 raise Exception("abuseipdb down")
             return abuseipdb_resp
+        elif "ip-api.com" in url:
+            if ipapi_resp is None:
+                m = MagicMock()
+                m.status_code = 200
+                m.json.return_value = {"status": "success", "country": "US", "org": "AS9924 Normal ISP", "as": "AS9924", "isp": "Normal ISP"}
+                return m
+            return ipapi_resp
         raise Exception(f"unexpected URL: {url}")
     return side_effect
 
@@ -484,3 +504,63 @@ class TestIPReputationModule:
         assert len(gn_findings) == 2
         # 15 - 2 - 2 = 11
         assert result.score == 11
+
+
+class TestIPAPI:
+    def test_ipapi_tor_exit_node(self, sample_assets):
+        """IP-API 回傳已知 Tor/VPN org 時，應產生 medium severity finding。"""
+        ipapi_resp = _mock_ipapi_response(
+            org="AS60729 Tor Project Inc",
+            asn="AS60729",
+            isp="Tor Project",
+        )
+
+        def side_effect(url, **kwargs):
+            if "ip-api.com" in url:
+                return ipapi_resp
+            m = MagicMock()
+            m.status_code = 200
+            m.json.return_value = {}
+            return m
+
+        m = IPReputationModule()
+        sample_assets.subdomains[0].ip = "185.220.101.1"
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("ABUSEIPDB_API_KEY", None)
+            with patch("requests.get", side_effect=side_effect):
+                result = m.run(sample_assets)
+
+        ipapi_findings = [
+            f for f in result.findings
+            if "ASN" in f.title or "Tor" in f.title or "VPN" in (f.description or "")
+        ]
+        assert len(ipapi_findings) >= 1
+
+    def test_ipapi_normal_ip_no_finding(self, sample_assets):
+        """IP-API 回傳正常 IP（非 VPN/Tor）時，不應產生 finding。"""
+        ipapi_resp = _mock_ipapi_response(
+            country="TW",
+            org="AS9924 Taiwan Fixed Network",
+            asn="AS9924",
+            isp="Taiwan Fixed Network",
+        )
+
+        def side_effect(url, **kwargs):
+            if "ip-api.com" in url:
+                return ipapi_resp
+            m = MagicMock()
+            m.status_code = 200
+            m.json.return_value = {}
+            return m
+
+        m = IPReputationModule()
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("ABUSEIPDB_API_KEY", None)
+            with patch("requests.get", side_effect=side_effect):
+                result = m.run(sample_assets)
+
+        ipapi_findings = [
+            f for f in result.findings
+            if "ipapi" in f.title.lower() or "ASN" in f.title
+        ]
+        assert len(ipapi_findings) == 0

@@ -62,6 +62,14 @@ class IPReputationModule(AnalysisModule):
                     if existing is None or abuseipdb_finding.score_impact > existing.score_impact:
                         ip_candidates[key] = abuseipdb_finding
 
+            # 來源 4: IP-API.com（免費無需 key）— ASN/ISP 可疑性檢查
+            ipapi_finding = self._check_ipapi(ip)
+            if ipapi_finding:
+                key = f"{ip}:ipapi"
+                existing = ip_candidates.get(key)
+                if existing is None or ipapi_finding.score_impact > existing.score_impact:
+                    ip_candidates[key] = ipapi_finding
+
             # 將去重後的 findings 加入總清單並計分
             for f in ip_candidates.values():
                 findings.append(f)
@@ -150,6 +158,43 @@ class IPReputationModule(AnalysisModule):
                 )
         except Exception as e:
             logger.error("greynoise_check_failed", ip=ip, error=str(e))
+        return None
+
+    _SUSPICIOUS_ORG_KEYWORDS = frozenset([
+        "tor", "vpn", "anonymous", "proxy", "bulletproof",
+        "m247", "njalla", "frantech", "hostkey",
+    ])
+
+    def _check_ipapi(self, ip: str) -> Finding | None:
+        """IP-API.com（免費無需 key）：查詢 IP 的 ASN/組織，偵測可疑 ISP/Tor 節點。"""
+        try:
+            resp = requests.get(
+                f"http://ip-api.com/json/{ip}",
+                params={"fields": "status,country,org,as,isp"},
+                headers={"user-agent": "CyPulse"},
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                return None
+            data = resp.json()
+            if data.get("status") != "success":
+                return None
+            org = data.get("org", "").lower()
+            isp = data.get("isp", "").lower()
+            combined = f"{org} {isp}"
+            if any(kw in combined for kw in self._SUSPICIOUS_ORG_KEYWORDS):
+                return Finding(
+                    severity="medium",
+                    title=f"Suspicious ASN: {data.get('as', 'unknown')}",
+                    description=(
+                        f"IP {ip} 屬於可疑 ASN/組織: {data.get('org', '')} "
+                        f"（{data.get('country', '')}），可能為 Tor 出口或匿名代理服務"
+                    ),
+                    evidence=f"{ip}: {data.get('org', '')} / {data.get('as', '')}",
+                    score_impact=2,
+                )
+        except Exception as e:
+            logger.warning("ipapi_check_failed", ip=ip, error=str(e))
         return None
 
     def _check_abuseipdb(self, ip: str, api_key: str) -> Finding | None:
