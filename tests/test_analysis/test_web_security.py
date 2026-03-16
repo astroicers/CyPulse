@@ -1,5 +1,21 @@
+import json
+import subprocess
+from unittest.mock import patch, MagicMock
 from cypulse.analysis.web_security import WebSecurityModule
 from cypulse.models import Asset, Assets
+import pytest
+
+
+@pytest.fixture
+def sample_assets():
+    return Assets(
+        domain="example.com",
+        timestamp="test",
+        subdomains=[
+            Asset(subdomain="www.example.com", ip="93.184.216.34",
+                  http_status=200, ports=[443]),
+        ],
+    )
 
 
 class TestWebSecurityModule:
@@ -111,3 +127,42 @@ class TestWebSecurityModule:
         result = m.run(assets)
         # 3 headers × 5 分上限 = 最多扣 15 分 → score >= 10
         assert result.score >= 10
+
+
+class TestTestssl:
+    def test_testssl_cert_expiry_warning(self, sample_assets):
+        """testssl.sh 偵測到憑證即將過期時，應產生 high severity finding。"""
+        testssl_output = json.dumps([
+            {
+                "id": "cert_expirationStatus",
+                "severity": "HIGH",
+                "finding": "certificate expires in 10 days",
+                "ip": "93.184.216.34/443"
+            }
+        ])
+        mock_result = MagicMock(spec=subprocess.CompletedProcess)
+        mock_result.stdout = testssl_output
+        mock_result.returncode = 0
+
+        m = WebSecurityModule()
+        with patch("cypulse.analysis.web_security.check_tool", side_effect=lambda t: t == "testssl.sh"), \
+             patch("cypulse.analysis.web_security.run_cmd", return_value=mock_result):
+            result = m.run(sample_assets)
+
+        testssl_findings = [
+            f for f in result.findings
+            if "testssl" in f.title.lower() or "cert" in f.title.lower() or "certificate" in f.title.lower() or "tls issue" in f.title.lower()
+        ]
+        assert len(testssl_findings) >= 1
+        assert any(f.severity in ("high", "critical") for f in testssl_findings)
+
+    def test_testssl_not_installed(self, sample_assets):
+        """testssl.sh 未安裝時，status 仍為 partial，並附 info finding。"""
+        m = WebSecurityModule()
+        with patch("cypulse.analysis.web_security.check_tool", return_value=False):
+            result = m.run(sample_assets)
+
+        info_findings = [f for f in result.findings if f.severity == "info"]
+        testssl_info = [f for f in info_findings if "testssl" in f.title.lower()]
+        assert len(testssl_info) >= 1
+        assert result.status == "partial"

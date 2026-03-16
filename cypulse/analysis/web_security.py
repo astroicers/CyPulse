@@ -84,6 +84,20 @@ class WebSecurityModule(AnalysisModule):
                 findings.append(nf)
                 score = max(0, score - nf.score_impact)
 
+        # Run testssl.sh if available
+        testssl_findings = self._run_testssl(assets)
+        if testssl_findings is None:
+            status = "partial"
+            findings.append(Finding(
+                severity="info",
+                title="testssl.sh not installed",
+                description="testssl.sh 未安裝，TLS 深度掃描未執行",
+            ))
+        else:
+            for tf in testssl_findings:
+                findings.append(tf)
+                score = max(0, score - tf.score_impact)
+
         elapsed = time.time() - start
         return ModuleResult(
             module_id=self.module_id(),
@@ -95,6 +109,58 @@ class WebSecurityModule(AnalysisModule):
             execution_time=elapsed,
             status=status,
         )
+
+    def _run_testssl(self, assets: Assets) -> list[Finding] | None:
+        """使用 testssl.sh 深度掃描 TLS 設定（憑證過期、弱 cipher、HSTS 等）。"""
+        if not check_tool("testssl.sh"):
+            logger.warning("testssl_not_found")
+            return None
+
+        findings = []
+        https_assets = [a for a in assets.subdomains if a.http_status and a.ports and 443 in a.ports][:3]
+
+        SEVERITY_MAP = {
+            "CRITICAL": ("critical", 5),
+            "HIGH":     ("high",     3),
+            "MEDIUM":   ("medium",   2),
+            "LOW":      ("low",      1),
+            "OK":       None,
+            "INFO":     None,
+            "WARN":     ("low",      1),
+        }
+
+        for asset in https_assets:
+            host = f"{asset.subdomain}:443"
+            try:
+                result = run_cmd(
+                    ["testssl.sh", "--jsonfile", "-", "--quiet", "--color", "0", host],
+                    timeout=60,
+                    check=False,
+                )
+            except Exception as e:
+                logger.warning("testssl_failed", host=host, error=str(e))
+                continue
+
+            try:
+                items = json.loads(result.stdout)
+            except (json.JSONDecodeError, ValueError):
+                continue
+
+            for item in items:
+                sev_raw = item.get("severity", "").upper()
+                mapped = SEVERITY_MAP.get(sev_raw)
+                if not mapped:
+                    continue
+                severity, impact = mapped
+                findings.append(Finding(
+                    severity=severity,
+                    title=f"TLS Issue: {item.get('id', 'unknown')}",
+                    description=f"{asset.subdomain}: {item.get('finding', '')}",
+                    evidence=f"{host}: {item.get('id', '')}",
+                    score_impact=impact,
+                ))
+
+        return findings
 
     def _run_nuclei(self, assets: Assets) -> list[Finding] | None:
         if not check_tool("nuclei"):
