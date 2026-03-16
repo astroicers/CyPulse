@@ -432,3 +432,55 @@ class TestIPReputationModule:
             finding = m._check_greynoise("1.2.3.4")
 
         assert finding is None
+
+    # ------------------------------------------------------------------
+    # 去重：同 IP 同來源不重複計分
+    # ------------------------------------------------------------------
+
+    def test_each_source_counted_once_per_ip(self):
+        """同一 IP 每個來源最多只產生一筆 finding，不重複計分。"""
+        assets = Assets(
+            domain="example.com",
+            timestamp="test",
+            subdomains=[Asset(subdomain="www.example.com", ip="1.2.3.4")],
+        )
+        m = IPReputationModule()
+        # Shodan 有弱點（impact=2），GreyNoise 惡意（impact=5）
+        shodan_resp = _mock_shodan_response(vulns=["CVE-2024-1234", "CVE-2024-5678"])
+        greynoise_resp = _mock_greynoise_response(classification="malicious", name="Botnet")
+
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("ABUSEIPDB_API_KEY", None)
+            with patch("requests.get", side_effect=_route_requests(shodan_resp, greynoise_resp)):
+                result = m.run(assets)
+
+        # 每個來源只計一次：Shodan 1 筆 + GreyNoise 1 筆 = 2 筆
+        assert len(result.findings) == 2
+        # 分數：15 - 2（shodan）- 5（greynoise）= 8
+        assert result.score == 8
+
+    def test_multiple_ips_each_deduped_independently(self):
+        """多個 IP 各自獨立去重，不互相影響。"""
+        assets = Assets(
+            domain="example.com",
+            timestamp="test",
+            subdomains=[
+                Asset(subdomain="a.example.com", ip="1.1.1.1"),
+                Asset(subdomain="b.example.com", ip="2.2.2.2"),
+            ],
+        )
+        m = IPReputationModule()
+        # 兩個 IP 都只有 GreyNoise 噪音（impact=2 each）
+        shodan_resp = _mock_shodan_response(vulns=[])
+        greynoise_resp = _mock_greynoise_response(noise=True, name="Scanner")
+
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("ABUSEIPDB_API_KEY", None)
+            with patch("requests.get", side_effect=_route_requests(shodan_resp, greynoise_resp)):
+                result = m.run(assets)
+
+        # 2 個 IP × 1 greynoise finding 各 = 2 筆
+        gn_findings = [f for f in result.findings if "掃描" in f.title]
+        assert len(gn_findings) == 2
+        # 15 - 2 - 2 = 11
+        assert result.score == 11

@@ -33,25 +33,39 @@ class IPReputationModule(AnalysisModule):
                 unique_ips.add(asset.ip)
 
         for ip in unique_ips:
+            # 每個 IP 的候選 findings（key = ip:source，確保同 IP 同來源不重複計分）
+            ip_candidates: dict[str, Finding] = {}
+
             # 來源 1: Shodan InternetDB（免費、不需 API key）
             shodan_findings = self._check_shodan_internetdb(ip)
             for f in shodan_findings:
-                findings.append(f)
-                score = max(0, score - f.score_impact)
+                key = f"{ip}:shodan"
+                existing = ip_candidates.get(key)
+                if existing is None or f.score_impact > existing.score_impact:
+                    ip_candidates[key] = f
 
             # 來源 2: GreyNoise Community（免費、不需 API key）
             greynoise_finding = self._check_greynoise(ip)
             if greynoise_finding:
-                findings.append(greynoise_finding)
-                score = max(0, score - greynoise_finding.score_impact)
+                key = f"{ip}:greynoise"
+                existing = ip_candidates.get(key)
+                if existing is None or greynoise_finding.score_impact > existing.score_impact:
+                    ip_candidates[key] = greynoise_finding
 
             # 來源 3: AbuseIPDB（免費註冊、選填）
             api_key = os.environ.get("ABUSEIPDB_API_KEY", "")
             if api_key:
                 abuseipdb_finding = self._check_abuseipdb(ip, api_key)
                 if abuseipdb_finding:
-                    findings.append(abuseipdb_finding)
-                    score = max(0, score - abuseipdb_finding.score_impact)
+                    key = f"{ip}:abuseipdb"
+                    existing = ip_candidates.get(key)
+                    if existing is None or abuseipdb_finding.score_impact > existing.score_impact:
+                        ip_candidates[key] = abuseipdb_finding
+
+            # 將去重後的 findings 加入總清單並計分
+            for f in ip_candidates.values():
+                findings.append(f)
+                score = max(0, score - f.score_impact)
 
         elapsed = time.time() - start
         return ModuleResult(
