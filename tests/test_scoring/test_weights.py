@@ -13,7 +13,7 @@ def test_weights_max_score_sum():
 
 
 def test_weights_keys():
-    assert set(WEIGHTS.keys()) == {"M1", "M2", "M3", "M4", "M5", "M6", "M7"}
+    assert set(WEIGHTS.keys()) == {"M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8"}
 
 
 def test_get_grade_a():

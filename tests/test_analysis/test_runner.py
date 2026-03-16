@@ -26,9 +26,9 @@ class TestRunAnalysis:
         assets = self._make_assets()
         findings = run_analysis(assets)
         assert findings.domain == "example.com"
-        assert len(findings.modules) == 7
+        assert len(findings.modules) == 8
         for m in findings.modules:
-            assert m.module_id in ["M1", "M2", "M3", "M4", "M5", "M6", "M7"]
+            assert m.module_id in ["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8"]
 
     def test_run_selected_modules(self):
         assets = self._make_assets()

@@ -11,6 +11,7 @@ from cypulse.analysis.dns_security import DNSSecurityModule
 from cypulse.analysis.email_security import EmailSecurityModule
 from cypulse.analysis.darkweb import DarkWebModule
 from cypulse.analysis.fake_domain import FakeDomainModule
+from cypulse.analysis.cloud_exposure import CloudExposureModule
 
 logger = structlog.get_logger()
 
@@ -22,6 +23,7 @@ ALL_MODULES = [
     EmailSecurityModule,
     DarkWebModule,
     FakeDomainModule,
+    CloudExposureModule,
 ]
 
 
