@@ -33,7 +33,10 @@ def run_cmd(
         except subprocess.TimeoutExpired:
             if attempt < max_retries:
                 delay = min(retry_delay * (2 ** attempt), max_backoff)
-                logger.warning("run_cmd_retry", cmd=" ".join(cmd), attempt=attempt + 1, reason="timeout", delay=delay)
+                logger.warning(
+                    "run_cmd_retry", cmd=" ".join(cmd),
+                    attempt=attempt + 1, reason="timeout", delay=delay
+                )
                 time.sleep(delay)
             else:
                 logger.error("run_cmd_timeout", cmd=" ".join(cmd), timeout=timeout)
@@ -41,8 +44,15 @@ def run_cmd(
         except subprocess.CalledProcessError as e:
             if attempt < max_retries:
                 delay = min(retry_delay * (2 ** attempt), max_backoff)
-                logger.warning("run_cmd_retry", cmd=" ".join(cmd), attempt=attempt + 1, reason="failed", delay=delay)
+                logger.warning(
+                    "run_cmd_retry", cmd=" ".join(cmd),
+                    attempt=attempt + 1, reason="failed", delay=delay
+                )
                 time.sleep(delay)
             else:
-                logger.error("run_cmd_failed", cmd=" ".join(cmd), returncode=e.returncode, stderr=e.stderr[:500] if e.stderr else "")
+                logger.error(
+                    "run_cmd_failed", cmd=" ".join(cmd),
+                    returncode=e.returncode,
+                    stderr=e.stderr[:500] if e.stderr else "",
+                )
                 raise

@@ -2,7 +2,7 @@ from __future__ import annotations
 import json
 import structlog
 from cypulse.discovery.base import DiscoveryTool
-from cypulse.utils.subprocess import run_cmd, check_tool
+from cypulse.utils.subprocess import check_tool
 
 logger = structlog.get_logger()
 
@@ -13,7 +13,7 @@ class DnsxTool(DiscoveryTool):
         return "dnsx"
 
     def run(self, domain: str, config: dict) -> list[dict]:
-        """Run dnsx on a list of subdomains (passed via domain as newline-separated string or single domain)."""
+        """Run dnsx on subdomains (domain as newline-separated string or single domain)."""
         if not check_tool("dnsx"):
             logger.warning("dnsx_not_found", tool=self.name())
             return []

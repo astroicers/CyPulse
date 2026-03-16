@@ -213,7 +213,10 @@ class IPReputationModule(AnalysisModule):
                 return Finding(
                     severity="high",
                     title=f"IP {ip} flagged on AbuseIPDB",
-                    description=f"Abuse confidence: {abuse_score}%, reports: {data.get('totalReports', 0)}",
+                    description=(
+                        f"Abuse confidence: {abuse_score}%, "
+                        f"reports: {data.get('totalReports', 0)}"
+                    ),
                     evidence=ip,
                     score_impact=10,
                 )

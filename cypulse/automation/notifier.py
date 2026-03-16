@@ -24,7 +24,12 @@ class SlackNotifier(Notifier):
         if not self.webhook_url:
             logger.warning("slack_no_webhook")
             return False
-        emoji = {"critical": ":red_circle:", "high": ":orange_circle:", "info": ":blue_circle:"}.get(severity, ":white_circle:")
+        emoji_map = {
+            "critical": ":red_circle:",
+            "high": ":orange_circle:",
+            "info": ":blue_circle:",
+        }
+        emoji = emoji_map.get(severity, ":white_circle:")
         try:
             resp = requests.post(
                 self.webhook_url,

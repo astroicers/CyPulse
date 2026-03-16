@@ -15,9 +15,6 @@ class DiffEngine:
         old_findings = self._load_json(os.path.join(old_dir, "findings.json"))
         new_findings = self._load_json(os.path.join(new_dir, "findings.json"))
 
-        old_ts = old_score.get("scan_duration", old_dir.split("/")[-1])
-        new_ts = new_score.get("scan_duration", new_dir.split("/")[-1])
-
         score_change = new_score.get("total", 0) - old_score.get("total", 0)
 
         # Compare findings
@@ -63,10 +60,10 @@ class DiffEngine:
         )
 
         logger.info("diff_complete",
-                     score_change=score_change,
-                     new=len(new_items),
-                     resolved=len(resolved_items),
-                     alerts=len(alerts))
+                    score_change=score_change,
+                    new=len(new_items),
+                    resolved=len(resolved_items),
+                    alerts=len(alerts))
         return report
 
     def _load_json(self, path: str) -> dict:

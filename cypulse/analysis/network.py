@@ -1,5 +1,4 @@
 from __future__ import annotations
-import json
 import structlog
 from cypulse.analysis.base import AnalysisModule
 from cypulse.models import Assets, ModuleResult, Finding

@@ -49,7 +49,10 @@ class FakeDomainModule(AnalysisModule):
             findings.append(Finding(
                 severity="medium",
                 title=f"Suspicious domain: {domain_info.get('domain', '')}",
-                description=f"偽冒域名 {domain_info.get('domain', '')} 已有 DNS 解析 ({domain_info.get('fuzzer', '')})",
+                description=(
+                    f"偽冒域名 {domain_info.get('domain', '')} "
+                    f"已有 DNS 解析 ({domain_info.get('fuzzer', '')})"
+                ),
                 evidence=domain_info.get("domain", ""),
                 score_impact=1,
             ))

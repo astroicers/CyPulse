@@ -63,7 +63,10 @@ def scan(ctx, domain: str, modules: str | None, output: str | None):
     from cypulse.discovery.pipeline import run_discovery, save_assets
     assets = run_discovery(domain, scan_config)
     scan_dir = save_assets(assets, output_dir)
-    click.echo(f"[CyPulse]   子網域: {assets.total_subdomains}, 存活: {assets.total_live}, HTTP: {assets.total_http}")
+    click.echo(
+        f"[CyPulse]   子網域: {assets.total_subdomains}, "
+        f"存活: {assets.total_live}, HTTP: {assets.total_http}"
+    )
 
     # Phase 2: Analysis
     click.echo("[CyPulse] Phase 2: 風險分析...")
@@ -122,7 +125,10 @@ def scan(ctx, domain: str, modules: str | None, output: str | None):
 
 @cli.command()
 @click.argument("scan_dir")
-@click.option("--format", "-f", "fmt", default="html", type=click.Choice(["html", "pdf", "csv", "all"]))
+@click.option(
+    "--format", "-f", "fmt", default="html",
+    type=click.Choice(["html", "pdf", "csv", "all"]),
+)
 def report(scan_dir: str, fmt: str):
     """以既有掃描結果產出報告"""
     if not os.path.isdir(scan_dir):
@@ -131,7 +137,6 @@ def report(scan_dir: str, fmt: str):
 
     # Load data
     from cypulse.models import Assets, Findings, Score
-    import dataclasses
 
     def _load(path, cls=None):
         with open(path, "r", encoding="utf-8") as f:
@@ -160,7 +165,11 @@ def report(scan_dir: str, fmt: str):
             execution_time=m.get("execution_time", 0),
             status=m.get("status", "success"),
         ))
-    findings = Findings(domain=findings_data["domain"], timestamp=findings_data["timestamp"], modules=modules)
+    findings = Findings(
+        domain=findings_data["domain"],
+        timestamp=findings_data["timestamp"],
+        modules=modules,
+    )
     score = Score(
         total=score_data["total"],
         grade=score_data["grade"],

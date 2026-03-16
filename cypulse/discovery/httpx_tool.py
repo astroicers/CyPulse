@@ -2,7 +2,7 @@ from __future__ import annotations
 import json
 import structlog
 from cypulse.discovery.base import DiscoveryTool
-from cypulse.utils.subprocess import run_cmd, check_tool
+from cypulse.utils.subprocess import check_tool
 
 logger = structlog.get_logger()
 
@@ -75,7 +75,10 @@ class HttpxTool(DiscoveryTool):
                     "url": data.get("url", ""),
                     "http_status": data.get("status_code"),
                     "http_title": data.get("title", ""),
-                    "tls_version": data.get("tls", {}).get("version", None) if isinstance(data.get("tls"), dict) else None,
+                    "tls_version": (
+                        data.get("tls", {}).get("version", None)
+                        if isinstance(data.get("tls"), dict) else None
+                    ),
                     "tech": data.get("tech", []),
                     "content_length": data.get("content_length"),
                     "security_headers": _extract_security_headers(data.get("header", {})),

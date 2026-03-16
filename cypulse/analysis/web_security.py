@@ -117,7 +117,10 @@ class WebSecurityModule(AnalysisModule):
             return None
 
         findings = []
-        https_assets = [a for a in assets.subdomains if a.http_status and a.ports and 443 in a.ports][:3]
+        https_assets = [
+            a for a in assets.subdomains
+            if a.http_status and a.ports and 443 in a.ports
+        ][:3]
 
         SEVERITY_MAP = {
             "CRITICAL": ("critical", 5),
@@ -174,7 +177,8 @@ class WebSecurityModule(AnalysisModule):
         findings = []
         try:
             import subprocess as sp
-            import tempfile, os
+            import tempfile
+            import os
             with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
                 f.write("\n".join(live_hosts))
                 hosts_file = f.name
@@ -207,7 +211,11 @@ class WebSecurityModule(AnalysisModule):
                         try:
                             data = json.loads(line)
                             sev = data.get("info", {}).get("severity", "info")
-                            impact = {"critical": 8, "high": 5, "medium": 3, "low": 1, "info": 0}.get(sev, 0)
+                            impact_map = {
+                                "critical": 8, "high": 5,
+                                "medium": 3, "low": 1, "info": 0,
+                            }
+                            impact = impact_map.get(sev, 0)
                             findings.append(Finding(
                                 severity=sev,
                                 title=data.get("info", {}).get("name", "Unknown"),

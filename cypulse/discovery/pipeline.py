@@ -7,7 +7,7 @@ import structlog
 from cypulse.models import Asset, Assets
 from cypulse.discovery.subfinder import SubfinderTool
 from cypulse.discovery.amass import AmassTool
-from cypulse.discovery.dnsx import DnsxTool, resolve_subdomains
+from cypulse.discovery.dnsx import resolve_subdomains
 from cypulse.discovery.httpx_tool import HttpxTool
 from cypulse.discovery.naabu import NaabuTool
 from cypulse.discovery.web_sources import query_web_sources

@@ -73,7 +73,10 @@ class ReportGenerator:
         assets_path = os.path.join(output_dir, "assets.csv")
         with open(assets_path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow(["subdomain", "ip", "ports", "http_status", "http_title", "tls_version"])
+            writer.writerow([
+                "subdomain", "ip", "ports",
+                "http_status", "http_title", "tls_version",
+            ])
             for asset in assets.subdomains:
                 writer.writerow([
                     asset.subdomain,
@@ -89,7 +92,10 @@ class ReportGenerator:
         findings_path = os.path.join(output_dir, "findings.csv")
         with open(findings_path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow(["module_id", "module_name", "severity", "title", "description", "evidence", "score_impact"])
+            writer.writerow([
+                "module_id", "module_name", "severity",
+                "title", "description", "evidence", "score_impact",
+            ])
             for module in findings.modules:
                 for finding in module.findings:
                     writer.writerow([

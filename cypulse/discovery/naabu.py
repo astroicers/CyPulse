@@ -2,7 +2,7 @@ from __future__ import annotations
 import json
 import structlog
 from cypulse.discovery.base import DiscoveryTool
-from cypulse.utils.subprocess import run_cmd, check_tool
+from cypulse.utils.subprocess import check_tool
 
 logger = structlog.get_logger()
 
