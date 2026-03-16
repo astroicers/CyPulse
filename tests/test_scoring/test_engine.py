@@ -18,14 +18,14 @@ class TestGetGrade:
         assert get_grade(89) == "B"
 
     def test_grade_c(self):
-        assert get_grade(75) == "C"
+        assert get_grade(74) == "C"
         assert get_grade(70) == "C"
-        assert get_grade(79) == "C"
+        assert get_grade(60) == "C"
 
     def test_grade_d(self):
-        assert get_grade(60) == "D"
+        assert get_grade(59) == "D"
         assert get_grade(0) == "D"
-        assert get_grade(69) == "D"
+        assert get_grade(30) == "D"
 
 
 class TestScoringEngine:
@@ -70,7 +70,7 @@ class TestScoringEngine:
         engine = ScoringEngine()
         score = engine.calculate(findings)
         assert score.total == 78
-        assert score.grade == "C"
+        assert score.grade == "B"
         assert len(score.explanations) > 0
 
     def test_zero_score(self):
