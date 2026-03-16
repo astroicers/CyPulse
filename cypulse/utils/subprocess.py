@@ -17,6 +17,7 @@ def run_cmd(
     check: bool = True,
     max_retries: int = 0,
     retry_delay: float = 5.0,
+    max_backoff: float = 60.0,
 ) -> subprocess.CompletedProcess:
     logger.debug("run_cmd", cmd=" ".join(cmd), timeout=timeout, max_retries=max_retries)
     for attempt in range(max_retries + 1):
@@ -31,7 +32,7 @@ def run_cmd(
             return result
         except subprocess.TimeoutExpired:
             if attempt < max_retries:
-                delay = retry_delay * (2 ** attempt)
+                delay = min(retry_delay * (2 ** attempt), max_backoff)
                 logger.warning("run_cmd_retry", cmd=" ".join(cmd), attempt=attempt + 1, reason="timeout", delay=delay)
                 time.sleep(delay)
             else:
@@ -39,7 +40,7 @@ def run_cmd(
                 raise
         except subprocess.CalledProcessError as e:
             if attempt < max_retries:
-                delay = retry_delay * (2 ** attempt)
+                delay = min(retry_delay * (2 ** attempt), max_backoff)
                 logger.warning("run_cmd_retry", cmd=" ".join(cmd), attempt=attempt + 1, reason="failed", delay=delay)
                 time.sleep(delay)
             else:
