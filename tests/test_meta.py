@@ -39,6 +39,24 @@ def test_pyproject_version_matches_latest_changelog():
     )
 
 
+def test_package_version_matches_pyproject():
+    """cypulse.__version__ 必須與 pyproject.toml version 一致。
+
+    以前 cypulse/__init__.py 硬寫 __version__，與 pyproject 漂移後
+    CLI --version 顯示舊值（實測 docker compose run cypulse --version）。
+    現改為動態讀 package metadata。
+    """
+    from cypulse import __version__
+
+    pyproject_text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    pyproject_version = tomllib.loads(pyproject_text)["project"]["version"]
+
+    assert __version__ == pyproject_version, (
+        f"cypulse.__version__={__version__} 與 "
+        f"pyproject.toml version={pyproject_version} 不一致。"
+    )
+
+
 def test_grades_match_adr004():
     """GRADES（scoring/weights.py）必須與 ADR-004 文字描述的閾值一致。
 
