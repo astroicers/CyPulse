@@ -3,7 +3,7 @@
 
 version: "1.0"
 project: CyPulse
-last_updated: 2026-03-12
+last_updated: 2026-04-17
 
 # ═══ 專案元資料 ═══
 
@@ -49,9 +49,18 @@ integrations:
   - name: dnstwist
     purpose: 偽冒域名偵測
     sdk: dnstwist
-  - name: h8mail
-    purpose: 暗網憑證外洩搜尋
-    sdk: h8mail
+  - name: hibp_leakcheck
+    purpose: 暗網憑證外洩搜尋（HIBP 付費 + LeakCheck 免費 fallback）
+    sdk: HTTP API 直接呼叫（不使用 h8mail）
+  - name: testssl
+    purpose: TLS 深度掃描（憑證、弱 cipher、HSTS）
+    sdk: testssl.sh 3.2
+  - name: s3scanner
+    purpose: 雲端 bucket 暴露掃描
+    sdk: s3scanner Go CLI
+  - name: nmap
+    purpose: 網路服務識別與 CVE 偵測
+    sdk: nmap + vulners NSE
   - name: weasyprint
     purpose: HTML 轉 PDF 報告
     sdk: weasyprint
@@ -341,19 +350,20 @@ milestones:
 
     tasks:
       - id: T201
-        title: "七維度加權評分演算法（scoring.py）"
+        title: "八維度加權評分演算法（scoring.py）"
         type: NEW_FEATURE
         priority: 1
-        adr: null
+        adr: ADR-002
         spec: null
         srs_ref: FR-301
         depends_on: [T108]
         status: completed
         estimated_complexity: high
         description: |
-          實作加權評分引擎：M1(25%) M2(15%) M3(20%) M4(15%) M5(10%) M6(10%) M7(5%)。
+          實作加權評分引擎（最新權重，見 ADR-005 與 cypulse/scoring/weights.py）：
+          M1(25%) M2(15%) M3(20%) M4(15%) M5(8%) M6(10%) M7(3%) M8(4%) = 100%
           輸入 findings.json，輸出 score.json（含總分 0-100、等級 A/B/C/D、各維度分數）。
-          等級對照：A(90-100) B(80-89) C(70-79) D(<70)。
+          等級對照（見 ADR-004 線性化）：A(90-100) B(75-89) C(60-74) D(0-59)。
 
       - id: T202
         title: "JSON 結果彙整層"
@@ -502,5 +512,76 @@ milestones:
         estimated_complexity: medium
         description: |
           確保 docker-compose build 成功、所有 PD 工具（subfinder, httpx, nuclei, dnsx, naabu）
-          與系統工具（nmap, dnsrecon, testssl.sh, dnstwist）皆可在容器內執行。
-          驗證七大模組在 Docker 環境下正常運行且評分合理（非虛高）。
+          與系統工具（nmap, dnsrecon, testssl.sh, dnstwist, s3scanner）皆可在容器內執行。
+          驗證八大模組（M1–M8）在 Docker 環境下正常運行且評分合理（非虛高）。
+
+  # ────────────────────────────────────────────
+  # M5：模組擴充與評分校準（2026-04）
+  # ────────────────────────────────────────────
+  - id: M5
+    title: "M8 雲端資產暴露 + 評分校準 + 補救建議擴充"
+    target_date: 2026-04-17
+    status: completed
+
+    tasks:
+      - id: T109
+        title: "M8 雲端資產暴露模組（s3scanner）"
+        type: NEW_FEATURE
+        priority: 1
+        adr: ADR-005
+        spec: null
+        srs_ref: FR-208
+        depends_on: [T108]
+        status: completed
+        estimated_complexity: medium
+        description: |
+          新增 cypulse/analysis/cloud_exposure.py，使用 s3scanner Go CLI 掃描
+          以 domain 衍生的常見 bucket 名稱（www-/media-/assets-/cdn-/backup-/static-）。
+          評分依據：公開可寫 -critical / 公開可讀 -high / 存在但私有 -info。
+          權重 4%、滿分 4，weights.py 同步更新（見 ADR-005）。
+          輸出 module_M8.json 並併入 findings.json。
+
+      - id: T110
+        title: "評分去重與等級閾值線性化"
+        type: REFACTOR
+        priority: 2
+        adr: ADR-004
+        spec: null
+        srs_ref: null
+        depends_on: [T201]
+        status: completed
+        estimated_complexity: medium
+        description: |
+          M1 改 per-header-type 彙總扣分，避免 findings 爆炸。
+          GRADES 閾值改為 A(90-100) B(75-89) C(60-74) D(0-59) 線性化。
+          補救建議擴充至 9 項（涵蓋各模組高頻 finding）。
+          M2 新增 IP-API.com ASN/ISP 可疑性檢查；M1 新增 testssl.sh 深度掃描。
+
+      - id: T111
+        title: "M1 httpx security headers 採集修復"
+        type: BUG_FIX
+        priority: 1
+        adr: null
+        spec: null
+        srs_ref: FR-103
+        depends_on: [T005]
+        status: completed
+        estimated_complexity: low
+        description: |
+          httpx_tool 加 -irh 旗標、解析 PD httpx snake_case header dict。
+          pipeline ports 去重避免重複值。
+          修復前 M1 永遠 0 分（headers 永遠 {}），修復後正常評分。
+
+      - id: T112
+        title: "Notifier 整合測試補齊與覆蓋率提升"
+        type: TEST
+        priority: 3
+        adr: null
+        spec: null
+        srs_ref: FR-403
+        depends_on: [T303]
+        status: completed
+        estimated_complexity: low
+        description: |
+          補齊 send_alerts、SMTP 錯誤、HTTP 非 200 等整合測試案例。
+          總測試數提升至 264，整體 coverage ≥ 85%。
