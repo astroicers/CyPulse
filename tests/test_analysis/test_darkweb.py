@@ -304,7 +304,8 @@ class TestDarkWebModule:
     # ------------------------------------------------------------------
 
     def test_hibp_api_failure_comb_succeeds(self, sample_assets):
-        """HIBP 失敗時，COMB 仍可正常運作。"""
+        """HIBP（core）失敗但 COMB（auxiliary）成功 → status=error（唯一 core 失敗）。
+        但 COMB 仍正常產出 finding。"""
         m = DarkWebModule()
         comb_resp = _mock_comb_response(30)
         lc_resp = _mock_leakcheck_response(0)
@@ -320,12 +321,17 @@ class TestDarkWebModule:
         with patch("requests.get", side_effect=side_effect):
             result = m.run(sample_assets)
 
-        assert result.status == "success"
+        # HIBP 是唯一 core source，失敗 → status=error
+        assert result.status == "error"
+        # 但 COMB（auxiliary）仍正常產出 finding → 細粒度韌性
         comb_findings = [f for f in result.findings if "外洩憑證" in f.title]
         assert len(comb_findings) == 1
+        src_by_id = {s.source_id: s for s in result.sources}
+        assert src_by_id["hibp"].status == "failed"
+        assert src_by_id["comb"].status == "success"
 
     def test_comb_api_failure_hibp_succeeds(self, sample_assets):
-        """COMB 失敗時，HIBP 仍可正常運作。"""
+        """COMB（auxiliary）失敗但 HIBP（core）成功 → status=success。"""
         m = DarkWebModule()
         all_breaches = [
             {"Name": "TestBreach", "Domain": "example.com", "PwnCount": 50},
@@ -344,20 +350,25 @@ class TestDarkWebModule:
         with patch("requests.get", side_effect=side_effect):
             result = m.run(sample_assets)
 
+        # HIBP（core）成功 → status=success（auxiliary 失敗不影響，信心分數會反映）
         assert result.status == "success"
         hibp_findings = [f for f in result.findings if "Breach:" in f.title]
         assert len(hibp_findings) == 1
+        src_by_id = {s.source_id: s for s in result.sources}
+        assert src_by_id["hibp"].status == "success"
+        assert src_by_id["comb"].status == "failed"
 
     def test_all_apis_fail(self, sample_assets):
-        """三個 API 都失敗時，應回傳空 findings，滿分。"""
+        """三個 API 都失敗時，score 滿分（無扣分）但 status=error（所有 core 失敗）。"""
         m = DarkWebModule()
 
         with patch("requests.get", side_effect=Exception("network down")):
             result = m.run(sample_assets)
 
-        assert result.status == "success"
+        assert result.status == "error"
         assert result.score == 10
         assert result.findings == []
+        assert all(s.status == "failed" for s in result.sources)
 
     def test_hibp_non_200_status(self, sample_assets):
         """HIBP 回傳非 200 狀態碼時，應視為空清單。"""
@@ -392,7 +403,7 @@ class TestDarkWebModule:
     # ------------------------------------------------------------------
 
     def test_check_hibp_public_filters_by_domain(self):
-        """_check_hibp_public 應只回傳匹配域名的 breach。"""
+        """_check_hibp_public 回傳 (matching breaches, None)。"""
         m = DarkWebModule()
         all_breaches = [
             {"Name": "Match", "Domain": "target.com"},
@@ -404,41 +415,45 @@ class TestDarkWebModule:
         mock_resp.json.return_value = all_breaches
 
         with patch("requests.get", return_value=mock_resp):
-            result = m._check_hibp_public("target.com")
+            result, err = m._check_hibp_public("target.com")
 
+        assert err is None
         assert len(result) == 2
         names = {b["Name"] for b in result}
         assert names == {"Match", "Match2"}
 
     def test_check_hibp_public_returns_empty_on_exception(self):
-        """_check_hibp_public 內部例外應回傳空清單。"""
+        """_check_hibp_public 內部例外應回傳 ([], error_str)。"""
         m = DarkWebModule()
 
         with patch("requests.get", side_effect=RuntimeError("unexpected")):
-            result = m._check_hibp_public("example.com")
+            result, err = m._check_hibp_public("example.com")
 
         assert result == []
+        assert err is not None
 
     def test_check_credential_leaks_returns_count(self):
-        """_check_credential_leaks 應回傳 count 值。"""
+        """_check_credential_leaks 回傳 (count, None)。"""
         m = DarkWebModule()
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"count": 42, "lines": []}
 
         with patch("requests.get", return_value=mock_resp):
-            result = m._check_credential_leaks("example.com")
+            count, err = m._check_credential_leaks("example.com")
 
-        assert result == 42
+        assert err is None
+        assert count == 42
 
     def test_check_credential_leaks_returns_zero_on_exception(self):
-        """_check_credential_leaks 內部例外應回傳 0。"""
+        """_check_credential_leaks 內部例外應回傳 (0, error_str)。"""
         m = DarkWebModule()
 
         with patch("requests.get", side_effect=RuntimeError("unexpected")):
-            result = m._check_credential_leaks("example.com")
+            count, err = m._check_credential_leaks("example.com")
 
-        assert result == 0
+        assert count == 0
+        assert err is not None
 
     # ------------------------------------------------------------------
     # 7. ModuleResult 欄位完整性
@@ -613,7 +628,7 @@ class TestDarkWebModule:
     # ------------------------------------------------------------------
 
     def test_check_leakcheck_returns_count_and_sources(self):
-        """_check_leakcheck 應回傳 (count, sources)。"""
+        """_check_leakcheck 回傳 (count, sources, None)。"""
         m = DarkWebModule()
         mock_resp = MagicMock()
         mock_resp.status_code = 200
@@ -624,31 +639,34 @@ class TestDarkWebModule:
         }
 
         with patch("requests.get", return_value=mock_resp):
-            count, sources = m._check_leakcheck("example.com")
+            count, sources, err = m._check_leakcheck("example.com")
 
+        assert err is None
         assert count == 42
         assert len(sources) == 1
         assert sources[0]["name"] == "DB1"
 
     def test_check_leakcheck_returns_zero_on_not_found(self):
-        """_check_leakcheck found=0 時應回傳 (0, [])。"""
+        """_check_leakcheck found=0 → (0, [], None) 成功但無資料。"""
         m = DarkWebModule()
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"success": True, "found": 0, "sources": []}
 
         with patch("requests.get", return_value=mock_resp):
-            count, sources = m._check_leakcheck("example.com")
+            count, sources, err = m._check_leakcheck("example.com")
 
+        assert err is None
         assert count == 0
         assert sources == []
 
     def test_check_leakcheck_returns_zero_on_exception(self):
-        """_check_leakcheck 內部例外應回傳 (0, [])。"""
+        """_check_leakcheck 內部例外回傳 (0, [], error_str)。"""
         m = DarkWebModule()
 
         with patch("requests.get", side_effect=RuntimeError("unexpected")):
-            count, sources = m._check_leakcheck("example.com")
+            count, sources, err = m._check_leakcheck("example.com")
 
         assert count == 0
         assert sources == []
+        assert err is not None

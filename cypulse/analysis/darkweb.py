@@ -1,10 +1,27 @@
 from __future__ import annotations
 import structlog
 import requests
-from cypulse.analysis.base import AnalysisModule
-from cypulse.models import Assets, ModuleResult, Finding
+from cypulse.analysis.base import AnalysisModule, determine_status
+from cypulse.models import Assets, ModuleResult, Finding, SourceStatus
 
 logger = structlog.get_logger()
+
+
+_SOURCE_DEFS = {
+    "hibp":      ("core",      0.5),
+    "comb":      ("auxiliary", 0.25),
+    "leakcheck": ("auxiliary", 0.25),
+}
+
+
+def _classify_error(exc: BaseException) -> str:
+    if isinstance(exc, requests.Timeout):
+        return "timeout"
+    if isinstance(exc, requests.RequestException):
+        return f"http_error:{type(exc).__name__}"
+    if isinstance(exc, (ValueError, KeyError)):
+        return f"parse_error:{type(exc).__name__}"
+    return f"unknown:{type(exc).__name__}"
 
 
 class DarkWebModule(AnalysisModule):
@@ -25,9 +42,11 @@ class DarkWebModule(AnalysisModule):
         start = time.time()
         findings: list[Finding] = []
         score = self.max_score()
+        source_errors: dict[str, str | None] = {sid: None for sid in _SOURCE_DEFS}
 
         # 來源 1: HIBP 公開清單 — 查域名是否為已知外洩事件來源
-        hibp_breaches = self._check_hibp_public(assets.domain)
+        hibp_breaches, hibp_err = self._check_hibp_public(assets.domain)
+        source_errors["hibp"] = hibp_err
         seen_breach_names: set[str] = set()
         for breach in hibp_breaches:
             breach_name = breach.get("Name", "Unknown")
@@ -49,7 +68,8 @@ class DarkWebModule(AnalysisModule):
             score = max(0, score - impact)
 
         # 來源 2: ProxyNova COMB — 查域名 email 是否在外洩資料庫中
-        leaked_count = self._check_credential_leaks(assets.domain)
+        leaked_count, comb_err = self._check_credential_leaks(assets.domain)
+        source_errors["comb"] = comb_err
         if leaked_count > 0:
             if leaked_count > 100:
                 sev, impact = "high", 3
@@ -70,7 +90,8 @@ class DarkWebModule(AnalysisModule):
             score = max(0, score - impact)
 
         # 來源 3: LeakCheck — 查域名是否出現在外洩資料庫
-        leak_count, leak_sources = self._check_leakcheck(assets.domain)
+        leak_count, leak_sources, lc_err = self._check_leakcheck(assets.domain)
+        source_errors["leakcheck"] = lc_err
         if leak_count > 0:
             source_names = ", ".join(
                 s.get("name", "Unknown") for s in leak_sources[:5]
@@ -94,6 +115,18 @@ class DarkWebModule(AnalysisModule):
             ))
             score = max(0, score - impact)
 
+        sources = [
+            SourceStatus(
+                source_id=sid,
+                role=role,
+                weight=weight,
+                status="failed" if source_errors[sid] else "success",
+                error=source_errors[sid],
+            )
+            for sid, (role, weight) in _SOURCE_DEFS.items()
+        ]
+        module_status = determine_status(sources)
+
         elapsed = time.time() - start
         return ModuleResult(
             module_id=self.module_id(),
@@ -103,28 +136,35 @@ class DarkWebModule(AnalysisModule):
             findings=findings,
             raw_data={},
             execution_time=elapsed,
-            status="success",
+            status=module_status,
+            sources=sources,
         )
 
-    def _check_hibp_public(self, domain: str) -> list[dict]:
-        """HIBP 公開端點：查域名是否為已知外洩事件來源（免費、不需 API key）。"""
+    def _check_hibp_public(
+        self, domain: str
+    ) -> tuple[list[dict], str | None]:
+        """HIBP 公開端點：回傳 (breaches, error)。"""
         try:
             resp = requests.get(
                 "https://haveibeenpwned.com/api/v3/breaches",
                 headers={"user-agent": "CyPulse"},
                 timeout=15,
             )
-            if resp.status_code == 200:
-                return [
-                    b for b in resp.json()
-                    if b.get("Domain", "").lower() == domain.lower()
-                ]
+            if resp.status_code != 200:
+                return [], f"http_{resp.status_code}"
+            breaches = [
+                b for b in resp.json()
+                if b.get("Domain", "").lower() == domain.lower()
+            ]
+            return breaches, None
         except Exception as e:
-            logger.error("hibp_public_failed", error=str(e))
-        return []
+            logger.warning("hibp_public_failed", error=str(e))
+            return [], _classify_error(e)
 
-    def _check_credential_leaks(self, domain: str) -> int:
-        """ProxyNova COMB：查域名相關的外洩憑證數量（免費、不需 API key）。"""
+    def _check_credential_leaks(
+        self, domain: str
+    ) -> tuple[int, str | None]:
+        """ProxyNova COMB：回傳 (leaked_count, error)。"""
         try:
             resp = requests.get(
                 "https://api.proxynova.com/comb",
@@ -132,24 +172,29 @@ class DarkWebModule(AnalysisModule):
                 headers={"user-agent": "CyPulse"},
                 timeout=15,
             )
-            if resp.status_code == 200:
-                return resp.json().get("count", 0)
+            if resp.status_code != 200:
+                return 0, f"http_{resp.status_code}"
+            return resp.json().get("count", 0), None
         except Exception as e:
-            logger.error("comb_check_failed", error=str(e))
-        return 0
+            logger.warning("comb_check_failed", error=str(e))
+            return 0, _classify_error(e)
 
-    def _check_leakcheck(self, domain: str) -> tuple[int, list[dict]]:
-        """LeakCheck Public API：查域名是否出現在外洩資料庫（免費、不需 API key）。"""
+    def _check_leakcheck(
+        self, domain: str
+    ) -> tuple[int, list[dict], str | None]:
+        """LeakCheck Public API：回傳 (count, sources, error)。"""
         try:
             resp = requests.get(
                 f"https://leakcheck.io/api/public?check={domain}",
                 headers={"user-agent": "CyPulse"},
                 timeout=15,
             )
-            if resp.status_code == 200:
-                data = resp.json()
-                if data.get("success") and data.get("found"):
-                    return (data.get("found", 0), data.get("sources", []))
+            if resp.status_code != 200:
+                return 0, [], f"http_{resp.status_code}"
+            data = resp.json()
+            if data.get("success") and data.get("found"):
+                return (data.get("found", 0), data.get("sources", []), None)
+            return 0, [], None
         except Exception as e:
-            logger.error("leakcheck_failed", error=str(e))
-        return (0, [])
+            logger.warning("leakcheck_failed", error=str(e))
+            return 0, [], _classify_error(e)

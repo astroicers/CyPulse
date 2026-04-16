@@ -3,8 +3,8 @@ import json
 import os
 import tempfile
 import structlog
-from cypulse.analysis.base import AnalysisModule
-from cypulse.models import Assets, ModuleResult, Finding
+from cypulse.analysis.base import AnalysisModule, determine_status
+from cypulse.models import Assets, ModuleResult, Finding, SourceStatus
 from cypulse.utils.subprocess import run_cmd, check_tool
 
 logger = structlog.get_logger()
@@ -41,7 +41,6 @@ class CloudExposureModule(AnalysisModule):
         start = time.time()
         findings: list[Finding] = []
         score = self.max_score()
-        status = "success"
 
         if not check_tool("s3scanner"):
             logger.warning("s3scanner_not_found")
@@ -50,11 +49,17 @@ class CloudExposureModule(AnalysisModule):
                 title="s3scanner not installed",
                 description="s3scanner 未安裝，雲端 bucket 暴露掃描未執行",
             ))
+            sources = [SourceStatus(
+                source_id="s3scanner", role="core", weight=1.0,
+                status="skipped", error="not_installed",
+            )]
             return ModuleResult(
                 module_id=self.module_id(), module_name=self.module_name(),
                 score=score, max_score=self.max_score(),
                 findings=findings, raw_data={},
-                execution_time=time.time() - start, status="partial",
+                execution_time=time.time() - start,
+                status=determine_status(sources),
+                sources=sources,
             )
 
         bucket_names = _derive_bucket_names(assets.domain)
@@ -63,6 +68,7 @@ class CloudExposureModule(AnalysisModule):
             tmpfile = f.name
 
         result = None
+        s3_error: str | None = None
         try:
             result = run_cmd(
                 ["s3scanner", "scan", "--buckets-file", tmpfile, "--out-format", "json"],
@@ -71,7 +77,7 @@ class CloudExposureModule(AnalysisModule):
             )
         except Exception as e:
             logger.warning("s3scanner_failed", error=str(e))
-            status = "partial"
+            s3_error = f"runtime_error:{type(e).__name__}"
         finally:
             os.unlink(tmpfile)
 
@@ -97,10 +103,18 @@ class CloudExposureModule(AnalysisModule):
                     ))
                     score = max(0, score - impact)
 
+        sources = [SourceStatus(
+            source_id="s3scanner", role="core", weight=1.0,
+            status="failed" if s3_error else "success",
+            error=s3_error,
+        )]
+
         elapsed = time.time() - start
         return ModuleResult(
             module_id=self.module_id(), module_name=self.module_name(),
             score=score, max_score=self.max_score(),
             findings=findings, raw_data={},
-            execution_time=elapsed, status=status,
+            execution_time=elapsed,
+            status=determine_status(sources),
+            sources=sources,
         )

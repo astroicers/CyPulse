@@ -21,14 +21,33 @@ class TestCloudExposureModule:
         assert m.max_score() == 4
 
     def test_s3scanner_not_installed(self, sample_assets):
-        """s3scanner 未安裝時應回傳 status=partial，不拋例外。"""
+        """s3scanner 未安裝 → source=skipped，按規則 skipped 不計入失敗 → status=success。"""
         m = CloudExposureModule()
         with patch("cypulse.analysis.cloud_exposure.check_tool", return_value=False):
             result = m.run(sample_assets)
-        assert result.status == "partial"
         assert result.module_id == "M8"
         info_findings = [f for f in result.findings if f.severity == "info"]
         assert len(info_findings) >= 1
+        assert len(result.sources) == 1
+        assert result.sources[0].source_id == "s3scanner"
+        assert result.sources[0].status == "skipped"
+        # skipped 不算失敗，但信心分數（Task H）會反映未覆蓋
+        assert result.status == "success"
+
+    def test_s3scanner_runtime_error(self, sample_assets):
+        """s3scanner 執行時拋 TimeoutExpired → status=error（唯一 core 失敗）。"""
+        import subprocess
+        m = CloudExposureModule()
+        with patch("cypulse.analysis.cloud_exposure.check_tool", return_value=True), \
+             patch(
+                 "cypulse.analysis.cloud_exposure.run_cmd",
+                 side_effect=subprocess.TimeoutExpired(cmd="s3scanner", timeout=60),
+             ):
+            result = m.run(sample_assets)
+        assert result.status == "error"
+        assert len(result.sources) == 1
+        assert result.sources[0].status == "failed"
+        assert "runtime_error" in (result.sources[0].error or "")
 
     def test_no_public_buckets(self, sample_assets):
         """無公開 bucket 時，應滿分，無 non-info findings。"""

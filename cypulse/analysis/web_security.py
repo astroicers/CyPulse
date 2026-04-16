@@ -1,13 +1,18 @@
 from __future__ import annotations
 import json
 import structlog
-from cypulse.analysis.base import AnalysisModule
-from cypulse.models import Assets, ModuleResult, Finding
+from cypulse.analysis.base import AnalysisModule, determine_status
+from cypulse.models import Assets, ModuleResult, Finding, SourceStatus
 from cypulse.utils.subprocess import run_cmd, check_tool
 
 logger = structlog.get_logger()
 
 CRITICAL_HEADERS = ["strict-transport-security", "content-security-policy", "x-frame-options"]
+
+_SOURCE_DEFS = {
+    "nuclei":  ("core",      0.6),
+    "testssl": ("auxiliary", 0.4),
+}
 
 
 class WebSecurityModule(AnalysisModule):
@@ -71,15 +76,21 @@ class WebSecurityModule(AnalysisModule):
 
         # Run nuclei if available
         nuclei_findings = self._run_nuclei(assets)
-        status = "success"
         if nuclei_findings is None:
-            status = "partial"
+            nuclei_src = SourceStatus(
+                source_id="nuclei", role="core", weight=0.6,
+                status="skipped" if not check_tool("nuclei") else "failed",
+                error="not_installed" if not check_tool("nuclei") else "runtime_error",
+            )
             findings.append(Finding(
                 severity="info",
                 title="nuclei not installed",
-                description="nuclei 未安裝，弱點掃描未執行",
+                description="nuclei 未安裝或執行失敗，弱點掃描未執行",
             ))
         else:
+            nuclei_src = SourceStatus(
+                source_id="nuclei", role="core", weight=0.6, status="success",
+            )
             for nf in nuclei_findings:
                 findings.append(nf)
                 score = max(0, score - nf.score_impact)
@@ -87,16 +98,26 @@ class WebSecurityModule(AnalysisModule):
         # Run testssl.sh if available
         testssl_findings = self._run_testssl(assets)
         if testssl_findings is None:
-            status = "partial"
+            testssl_src = SourceStatus(
+                source_id="testssl", role="auxiliary", weight=0.4,
+                status="skipped" if not check_tool("testssl.sh") else "failed",
+                error="not_installed" if not check_tool("testssl.sh") else "runtime_error",
+            )
             findings.append(Finding(
                 severity="info",
                 title="testssl.sh not installed",
-                description="testssl.sh 未安裝，TLS 深度掃描未執行",
+                description="testssl.sh 未安裝或執行失敗，TLS 深度掃描未執行",
             ))
         else:
+            testssl_src = SourceStatus(
+                source_id="testssl", role="auxiliary", weight=0.4, status="success",
+            )
             for tf in testssl_findings:
                 findings.append(tf)
                 score = max(0, score - tf.score_impact)
+
+        sources = [nuclei_src, testssl_src]
+        status = determine_status(sources)
 
         elapsed = time.time() - start
         return ModuleResult(
@@ -108,6 +129,7 @@ class WebSecurityModule(AnalysisModule):
             raw_data={},
             execution_time=elapsed,
             status=status,
+            sources=sources,
         )
 
     def _run_testssl(self, assets: Assets) -> list[Finding] | None:

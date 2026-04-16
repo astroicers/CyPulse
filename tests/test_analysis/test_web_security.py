@@ -164,7 +164,7 @@ class TestTestssl:
         assert any(f.severity in ("high", "critical") for f in testssl_findings)
 
     def test_testssl_not_installed(self, sample_assets):
-        """testssl.sh 未安裝時，status 仍為 partial，並附 info finding。"""
+        """testssl.sh + nuclei 都未安裝時，info finding 存在，status=success（skipped 不算失敗）。"""
         m = WebSecurityModule()
         with patch("cypulse.analysis.web_security.check_tool", return_value=False):
             result = m.run(sample_assets)
@@ -172,4 +172,8 @@ class TestTestssl:
         info_findings = [f for f in result.findings if f.severity == "info"]
         testssl_info = [f for f in info_findings if "testssl" in f.title.lower()]
         assert len(testssl_info) >= 1
-        assert result.status == "partial"
+        # 都是 skipped（未安裝），按規則 skipped 不計入失敗 → success
+        src_by_id = {s.source_id: s for s in result.sources}
+        assert src_by_id["nuclei"].status == "skipped"
+        assert src_by_id["testssl"].status == "skipped"
+        assert result.status == "success"

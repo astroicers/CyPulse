@@ -194,7 +194,11 @@ class TestIPReputationModule:
         assert len(shodan_findings) == 0
 
     def test_shodan_error_independent(self, sample_assets):
-        """Shodan 失敗時，不影響 GreyNoise。"""
+        """Shodan 失敗但其他非 core 來源成功，仍能產出 findings。
+
+        無 API key 時 abuseipdb=skipped，shodan 是唯一 active core；
+        shodan 失敗 → status=error。但 GreyNoise（auxiliary）仍正常產出 finding，
+        不受 Shodan 失敗影響（這是細粒度韌性的核心驗證）。"""
         m = IPReputationModule()
         greynoise_resp = _mock_greynoise_response(classification="malicious", name="Botnet")
 
@@ -203,9 +207,33 @@ class TestIPReputationModule:
             with patch("requests.get", side_effect=_route_requests(None, greynoise_resp)):
                 result = m.run(sample_assets)
 
-        assert result.status == "success"
+        # 所有 active core 都失敗（此處只有 shodan）→ error
+        assert result.status == "error"
+        # 但 GreyNoise 仍成功查詢並產出 finding → 細粒度韌性奏效
         gn_findings = [f for f in result.findings if "GreyNoise" in f.title]
         assert len(gn_findings) == 1
+        shodan_src = next(s for s in result.sources if s.source_id == "shodan")
+        assert shodan_src.status == "failed"
+        gn_src = next(s for s in result.sources if s.source_id == "greynoise")
+        assert gn_src.status == "success"
+
+    def test_shodan_fail_with_abuseipdb_key(self, sample_assets):
+        """有 AbuseIPDB key 時，Shodan 失敗但 AbuseIPDB 成功 → status=partial（1/2 core 失敗）。"""
+        m = IPReputationModule()
+        greynoise_resp = _mock_greynoise_response()
+        abuseipdb_resp = _mock_abuseipdb_response(abuse_score=0)
+
+        with patch.dict(os.environ, {"ABUSEIPDB_API_KEY": "test-key"}):
+            with patch(
+                "requests.get",
+                side_effect=_route_requests(None, greynoise_resp, abuseipdb_resp),
+            ):
+                result = m.run(sample_assets)
+
+        assert result.status == "partial"
+        src_by_id = {s.source_id: s for s in result.sources}
+        assert src_by_id["shodan"].status == "failed"
+        assert src_by_id["abuseipdb"].status == "success"
 
     # ------------------------------------------------------------------
     # GreyNoise Community — IP 分類
@@ -372,7 +400,7 @@ class TestIPReputationModule:
     # ------------------------------------------------------------------
 
     def test_all_apis_fail(self, sample_assets):
-        """所有 API 都失敗時，score=max_score，不崩潰。"""
+        """所有 API 都失敗時，score=max_score（無 finding 可扣），但 status=error（所有 core 掛）。"""
         m = IPReputationModule()
 
         with patch.dict(os.environ, {}, clear=True):
@@ -380,9 +408,16 @@ class TestIPReputationModule:
             with patch("requests.get", side_effect=Exception("network down")):
                 result = m.run(sample_assets)
 
-        assert result.status == "success"
+        # 沒 API key → abuseipdb=skipped；shodan 是唯一 core，失敗 → status=error
+        assert result.status == "error"
         assert result.score == m.max_score()
         assert result.findings == []
+        # 驗證 sources 正確反映狀態
+        src_by_id = {s.source_id: s for s in result.sources}
+        assert src_by_id["shodan"].status == "failed"
+        assert src_by_id["greynoise"].status == "failed"
+        assert src_by_id["ip_api"].status == "failed"
+        assert src_by_id["abuseipdb"].status == "skipped"  # 沒 API key
 
     # ------------------------------------------------------------------
     # score 不得低於 0
@@ -438,44 +473,48 @@ class TestIPReputationModule:
     # ------------------------------------------------------------------
 
     def test_check_shodan_internetdb_returns_findings(self):
-        """_check_shodan_internetdb 有 CVE 時回傳 findings。"""
+        """_check_shodan_internetdb 有 CVE 時回傳 (findings, None)。"""
         m = IPReputationModule()
         mock_resp = _mock_shodan_response(vulns=["CVE-2024-1234"])
 
         with patch("requests.get", return_value=mock_resp):
-            findings = m._check_shodan_internetdb("1.2.3.4")
+            findings, err = m._check_shodan_internetdb("1.2.3.4")
 
+        assert err is None
         assert len(findings) == 1
         assert "CVE-2024-1234" in findings[0].evidence
 
     def test_check_shodan_internetdb_empty_on_error(self):
-        """_check_shodan_internetdb 失敗時回傳空清單。"""
+        """_check_shodan_internetdb 失敗時回傳 ([], error_str)。"""
         m = IPReputationModule()
 
         with patch("requests.get", side_effect=RuntimeError("fail")):
-            findings = m._check_shodan_internetdb("1.2.3.4")
+            findings, err = m._check_shodan_internetdb("1.2.3.4")
 
         assert findings == []
+        assert err is not None and "unknown" in err
 
     def test_check_greynoise_returns_finding_on_malicious(self):
-        """_check_greynoise malicious 時回傳 finding。"""
+        """_check_greynoise malicious 時回傳 (Finding, None)。"""
         m = IPReputationModule()
         mock_resp = _mock_greynoise_response(classification="malicious", name="Botnet")
 
         with patch("requests.get", return_value=mock_resp):
-            finding = m._check_greynoise("1.2.3.4")
+            finding, err = m._check_greynoise("1.2.3.4")
 
+        assert err is None
         assert finding is not None
         assert finding.severity == "high"
 
     def test_check_greynoise_returns_none_on_error(self):
-        """_check_greynoise 失敗時回傳 None。"""
+        """_check_greynoise 失敗時回傳 (None, error_str)。"""
         m = IPReputationModule()
 
         with patch("requests.get", side_effect=RuntimeError("fail")):
-            finding = m._check_greynoise("1.2.3.4")
+            finding, err = m._check_greynoise("1.2.3.4")
 
         assert finding is None
+        assert err is not None
 
     # ------------------------------------------------------------------
     # 去重：同 IP 同來源不重複計分

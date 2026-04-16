@@ -2,10 +2,29 @@ from __future__ import annotations
 import os
 import structlog
 import requests
-from cypulse.analysis.base import AnalysisModule
-from cypulse.models import Assets, ModuleResult, Finding
+from cypulse.analysis.base import AnalysisModule, determine_status
+from cypulse.models import Assets, ModuleResult, Finding, SourceStatus
 
 logger = structlog.get_logger()
+
+
+# 來源定義：id → (role, weight)。weight 總和應為 1.0。
+_SOURCE_DEFS = {
+    "shodan":    ("core",      0.35),
+    "abuseipdb": ("core",      0.35),
+    "greynoise": ("auxiliary", 0.15),
+    "ip_api":    ("auxiliary", 0.15),
+}
+
+
+def _classify_error(exc: BaseException) -> str:
+    if isinstance(exc, requests.Timeout):
+        return "timeout"
+    if isinstance(exc, requests.RequestException):
+        return f"http_error:{type(exc).__name__}"
+    if isinstance(exc, (ValueError, KeyError)):
+        return f"parse_error:{type(exc).__name__}"
+    return f"unknown:{type(exc).__name__}"
 
 
 class IPReputationModule(AnalysisModule):
@@ -27,53 +46,72 @@ class IPReputationModule(AnalysisModule):
         findings: list[Finding] = []
         score = self.max_score()
 
-        unique_ips = set()
-        for asset in assets.subdomains:
-            if asset.ip:
-                unique_ips.add(asset.ip)
+        unique_ips = {a.ip for a in assets.subdomains if a.ip}
+
+        # 各 source 的聚合狀態：只要對任一 IP 失敗就標 failed（悲觀）
+        source_state: dict[str, dict] = {
+            sid: {"success_ips": 0, "failure": None}
+            for sid in _SOURCE_DEFS
+        }
+        abuseipdb_key = os.environ.get("ABUSEIPDB_API_KEY", "")
 
         for ip in unique_ips:
-            # 每個 IP 的候選 findings（key = ip:source，確保同 IP 同來源不重複計分）
             ip_candidates: dict[str, Finding] = {}
 
-            # 來源 1: Shodan InternetDB（免費、不需 API key）
-            shodan_findings = self._check_shodan_internetdb(ip)
-            for f in shodan_findings:
-                key = f"{ip}:shodan"
-                existing = ip_candidates.get(key)
-                if existing is None or f.score_impact > existing.score_impact:
-                    ip_candidates[key] = f
+            # Shodan
+            sh_findings, sh_err = self._check_shodan_internetdb(ip)
+            self._update_source_state(source_state, "shodan", sh_err)
+            for f in sh_findings:
+                ip_candidates[f"{ip}:shodan"] = f
 
-            # 來源 2: GreyNoise Community（免費、不需 API key）
-            greynoise_finding = self._check_greynoise(ip)
-            if greynoise_finding:
-                key = f"{ip}:greynoise"
-                existing = ip_candidates.get(key)
-                if existing is None or greynoise_finding.score_impact > existing.score_impact:
-                    ip_candidates[key] = greynoise_finding
+            # GreyNoise
+            gn_finding, gn_err = self._check_greynoise(ip)
+            self._update_source_state(source_state, "greynoise", gn_err)
+            if gn_finding:
+                ip_candidates[f"{ip}:greynoise"] = gn_finding
 
-            # 來源 3: AbuseIPDB（免費註冊、選填）
-            api_key = os.environ.get("ABUSEIPDB_API_KEY", "")
-            if api_key:
-                abuseipdb_finding = self._check_abuseipdb(ip, api_key)
-                if abuseipdb_finding:
-                    key = f"{ip}:abuseipdb"
-                    existing = ip_candidates.get(key)
-                    if existing is None or abuseipdb_finding.score_impact > existing.score_impact:
-                        ip_candidates[key] = abuseipdb_finding
+            # AbuseIPDB（僅當 API key 存在）
+            if abuseipdb_key:
+                ab_finding, ab_err = self._check_abuseipdb(ip, abuseipdb_key)
+                self._update_source_state(source_state, "abuseipdb", ab_err)
+                if ab_finding:
+                    ip_candidates[f"{ip}:abuseipdb"] = ab_finding
 
-            # 來源 4: IP-API.com（免費無需 key）— ASN/ISP 可疑性檢查
-            ipapi_finding = self._check_ipapi(ip)
-            if ipapi_finding:
-                key = f"{ip}:ipapi"
-                existing = ip_candidates.get(key)
-                if existing is None or ipapi_finding.score_impact > existing.score_impact:
-                    ip_candidates[key] = ipapi_finding
+            # IP-API
+            ia_finding, ia_err = self._check_ipapi(ip)
+            self._update_source_state(source_state, "ip_api", ia_err)
+            if ia_finding:
+                ip_candidates[f"{ip}:ip_api"] = ia_finding
 
-            # 將去重後的 findings 加入總清單並計分
             for f in ip_candidates.values():
                 findings.append(f)
                 score = max(0, score - f.score_impact)
+
+        # 彙整 sources 狀態
+        sources: list[SourceStatus] = []
+        for sid, (role, weight) in _SOURCE_DEFS.items():
+            state = source_state[sid]
+            if sid == "abuseipdb" and not abuseipdb_key:
+                status = "skipped"
+                err = "no_api_key"
+            elif not unique_ips:
+                status = "skipped"
+                err = "no_ips_to_check"
+            elif state["failure"]:
+                status = "failed"
+                err = state["failure"]
+            else:
+                status = "success"
+                err = None
+            sources.append(SourceStatus(
+                source_id=sid, role=role, weight=weight,
+                status=status, error=err,
+            ))
+
+        module_status = determine_status(sources)
+        # 若所有來源都 skipped（沒 IP），維持 success（無資料可查並非失敗）
+        if module_status == "error" and all(s.status == "skipped" for s in sources):
+            module_status = "success"
 
         elapsed = time.time() - start
         return ModuleResult(
@@ -84,11 +122,21 @@ class IPReputationModule(AnalysisModule):
             findings=findings,
             raw_data={},
             execution_time=elapsed,
-            status="success",
+            status=module_status,
+            sources=sources,
         )
 
-    def _check_shodan_internetdb(self, ip: str) -> list[Finding]:
-        """Shodan InternetDB：查 IP 已知弱點與開放服務（免費、不需 API key）。"""
+    @staticmethod
+    def _update_source_state(state: dict, sid: str, err: str | None) -> None:
+        if err is None:
+            state[sid]["success_ips"] += 1
+        elif state[sid]["failure"] is None:
+            state[sid]["failure"] = err
+
+    def _check_shodan_internetdb(
+        self, ip: str
+    ) -> tuple[list[Finding], str | None]:
+        """回傳 (findings, error)。error=None 表示成功。"""
         findings: list[Finding] = []
         try:
             resp = requests.get(
@@ -96,8 +144,10 @@ class IPReputationModule(AnalysisModule):
                 headers={"user-agent": "CyPulse"},
                 timeout=10,
             )
+            if resp.status_code == 404:
+                return findings, None  # IP 未知 = 成功查詢無命中
             if resp.status_code != 200:
-                return findings
+                return findings, f"http_{resp.status_code}"
             data = resp.json()
             vulns = data.get("vulns", [])
             if vulns:
@@ -115,20 +165,24 @@ class IPReputationModule(AnalysisModule):
                     evidence=f"{ip}: {', '.join(vulns[:5])}",
                     score_impact=impact,
                 ))
+            return findings, None
         except Exception as e:
-            logger.error("shodan_internetdb_failed", ip=ip, error=str(e))
-        return findings
+            logger.warning("shodan_internetdb_failed", ip=ip, error=str(e))
+            return findings, _classify_error(e)
 
-    def _check_greynoise(self, ip: str) -> Finding | None:
-        """GreyNoise Community API：查 IP 是否為已知惡意/掃描來源（免費、不需 API key）。"""
+    def _check_greynoise(
+        self, ip: str
+    ) -> tuple[Finding | None, str | None]:
         try:
             resp = requests.get(
                 f"https://api.greynoise.io/v3/community/{ip}",
                 headers={"user-agent": "CyPulse"},
                 timeout=10,
             )
+            if resp.status_code == 404:
+                return None, None
             if resp.status_code != 200:
-                return None
+                return None, f"http_{resp.status_code}"
             data = resp.json()
             classification = data.get("classification", "unknown")
             noise = data.get("noise", False)
@@ -144,7 +198,7 @@ class IPReputationModule(AnalysisModule):
                     ),
                     evidence=f"{ip}: malicious ({name})",
                     score_impact=5,
-                )
+                ), None
             elif noise:
                 return Finding(
                     severity="medium",
@@ -155,18 +209,20 @@ class IPReputationModule(AnalysisModule):
                     ),
                     evidence=f"{ip}: noise ({name})",
                     score_impact=2,
-                )
+                ), None
+            return None, None
         except Exception as e:
-            logger.error("greynoise_check_failed", ip=ip, error=str(e))
-        return None
+            logger.warning("greynoise_check_failed", ip=ip, error=str(e))
+            return None, _classify_error(e)
 
     _SUSPICIOUS_ORG_KEYWORDS = frozenset([
         "tor", "vpn", "anonymous", "proxy", "bulletproof",
         "m247", "njalla", "frantech", "hostkey",
     ])
 
-    def _check_ipapi(self, ip: str) -> Finding | None:
-        """IP-API.com（免費無需 key）：查詢 IP 的 ASN/組織，偵測可疑 ISP/Tor 節點。"""
+    def _check_ipapi(
+        self, ip: str
+    ) -> tuple[Finding | None, str | None]:
         try:
             resp = requests.get(
                 f"http://ip-api.com/json/{ip}",
@@ -175,10 +231,11 @@ class IPReputationModule(AnalysisModule):
                 timeout=10,
             )
             if resp.status_code != 200:
-                return None
+                return None, f"http_{resp.status_code}"
             data = resp.json()
             if data.get("status") != "success":
-                return None
+                # ip-api 的 fail 視為「此 IP 無資料」，非 API 掛
+                return None, None
             org = data.get("org", "").lower()
             isp = data.get("isp", "").lower()
             combined = f"{org} {isp}"
@@ -188,16 +245,20 @@ class IPReputationModule(AnalysisModule):
                     title=f"Suspicious ASN: {data.get('as', 'unknown')}",
                     description=(
                         f"IP {ip} 屬於可疑 ASN/組織: {data.get('org', '')} "
-                        f"（{data.get('country', '')}），可能為 Tor 出口或匿名代理服務"
+                        f"（{data.get('country', '')}），"
+                        f"可能為 Tor 出口或匿名代理服務"
                     ),
                     evidence=f"{ip}: {data.get('org', '')} / {data.get('as', '')}",
                     score_impact=2,
-                )
+                ), None
+            return None, None
         except Exception as e:
             logger.warning("ipapi_check_failed", ip=ip, error=str(e))
-        return None
+            return None, _classify_error(e)
 
-    def _check_abuseipdb(self, ip: str, api_key: str) -> Finding | None:
+    def _check_abuseipdb(
+        self, ip: str, api_key: str
+    ) -> tuple[Finding | None, str | None]:
         try:
             resp = requests.get(
                 "https://api.abuseipdb.com/api/v2/check",
@@ -206,7 +267,7 @@ class IPReputationModule(AnalysisModule):
                 timeout=10,
             )
             if resp.status_code != 200:
-                return None
+                return None, f"http_{resp.status_code}"
             data = resp.json().get("data", {})
             abuse_score = data.get("abuseConfidenceScore", 0)
             if abuse_score > 50:
@@ -219,7 +280,7 @@ class IPReputationModule(AnalysisModule):
                     ),
                     evidence=ip,
                     score_impact=10,
-                )
+                ), None
             elif abuse_score > 20:
                 return Finding(
                     severity="medium",
@@ -227,7 +288,8 @@ class IPReputationModule(AnalysisModule):
                     description=f"Abuse confidence: {abuse_score}%",
                     evidence=ip,
                     score_impact=5,
-                )
+                ), None
+            return None, None
         except Exception as e:
-            logger.error("abuseipdb_check_failed", ip=ip, error=str(e))
-        return None
+            logger.warning("abuseipdb_check_failed", ip=ip, error=str(e))
+            return None, _classify_error(e)
