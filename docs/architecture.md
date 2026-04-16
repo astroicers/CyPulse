@@ -10,7 +10,7 @@
 
 ## 系統概覽
 
-CyPulse 是一個三層式 CLI 資安曝險評級平台，透過 Outside-In 非侵入式掃描，對目標域名進行七大面向的資安分析，產出量化評分（0-100）與繁體中文報告。整體架構分為：資產探勘層、風險分析層、評分報告層，各層之間以 JSON 格式傳遞資料。
+CyPulse 是一個三層式 CLI 資安曝險評級平台，透過 Outside-In 非侵入式掃描，對目標域名進行八大面向（M1–M8）的資安分析，產出量化評分（0-100）與繁體中文報告。整體架構分為：資產探勘層、風險分析層、評分報告層，各層之間以 JSON 格式傳遞資料。
 
 ---
 
@@ -96,18 +96,19 @@ sequenceDiagram
     Disc->>Disc: httpx → HTTP 探勘
     Disc-->>Anal: assets.json
 
-    par 七大模組並行執行
-        Anal->>Anal: M1 nuclei
-        Anal->>Anal: M2 AbuseIPDB
-        Anal->>Anal: M3 nmap
-        Anal->>Anal: M4 dnsrecon
+    par 八大模組並行執行
+        Anal->>Anal: M1 nuclei + testssl.sh
+        Anal->>Anal: M2 AbuseIPDB + IP-API + Shodan + GreyNoise
+        Anal->>Anal: M3 nmap + vulners
+        Anal->>Anal: M4 dnsrecon + DNSSEC
         Anal->>Anal: M5 checkdmarc
-        Anal->>Anal: M6 h8mail
+        Anal->>Anal: M6 HIBP + LeakCheck
         Anal->>Anal: M7 dnstwist
+        Anal->>Anal: M8 s3scanner
     end
     Anal-->>Score: findings.json
 
-    Score->>Score: 七維度加權計算
+    Score->>Score: 八維度加權計算
     Score-->>Report: score.json
 
     Report->>Report: Jinja2 → HTML
@@ -128,9 +129,11 @@ sequenceDiagram
 | naabu | 快速 Port 掃描 | latest | nmap（速度慢） |
 | nuclei | 模板式漏洞掃描 | v3+ | — |
 | nmap | 服務版本偵測 + vuln scripts | 7+ | nuclei CVE templates |
+| testssl.sh | TLS 深度掃描 | 3.2 | httpx 基本 TLS |
 | checkdmarc | SPF/DKIM/DMARC 檢測 | latest（PyPI） | 手動 DNS 查詢 |
 | dnstwist | 偽冒域名偵測 | latest（PyPI） | — |
-| h8mail | 憑證外洩搜尋 | latest（PyPI） | HIBP 網頁版 |
+| HIBP + LeakCheck | 憑證外洩搜尋（HTTP API） | — | 見 ADR-003 fallback |
+| s3scanner | 雲端 bucket 暴露偵測 | latest | 手動枚舉 |
 | Jinja2 | HTML 模板引擎 | 3+ | — |
 | weasyprint | HTML → PDF | latest | wkhtmltopdf |
 | Noto Sans TC | 繁中字型 | latest | — |
@@ -142,7 +145,7 @@ sequenceDiagram
 CyPulse 為本地 CLI 工具，不提供網路服務，安全邊界如下：
 
 - **掃描授權**：使用者有責任確認目標 domain 已獲授權掃描
-- **API Key 保護**：h8mail / AbuseIPDB 等 API Key 存放於 `.env` 檔案（加入 .gitignore）
+- **API Key 保護**：HIBP / AbuseIPDB / LeakCheck 等 API Key 存放於 `.env` 檔案（加入 .gitignore）
 - **subprocess 安全**：所有外部工具呼叫需對輸入做 domain 格式驗證，防止命令注入
 - **輸出隱私**：掃描結果可能包含敏感資訊（外洩帳號等），儲存目錄應限制存取權限
 - **日誌安全**：日誌中不記錄 API Key 與密碼
@@ -153,10 +156,14 @@ CyPulse 為本地 CLI 工具，不提供網路服務，安全邊界如下：
 
 - [ ] JSON 檔案儲存在大量歷史掃描時可能遇到 I/O 瓶頸，未來可考慮 SQLite
 - [ ] PD 工具 binary 版本需手動更新，無自動升級機制
-- [ ] 七大模組目前為序列執行，未來應改為並行（asyncio + subprocess）
+- [ ] 八大模組目前為序列執行，未來應改為並行（asyncio + subprocess）
 
 ---
 
 ## 關聯 ADR
 
 - ADR-001：初始技術棧選型（Python + ProjectDiscovery + Docker）
+- ADR-002：七維度加權評分演算法
+- ADR-003：API Fallback 至免費資料源（M2 / M6）
+- ADR-004：評分去重、等級線性化與補救建議
+- ADR-005：M8 雲端資產暴露模組

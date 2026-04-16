@@ -41,11 +41,11 @@
 │   輸出：assets.json                                   │
 ├──────────────────────────────────────────────────────┤
 │     Layer 2：風險分析（cypulse/analysis/）             │
-│   M1~M7 七大安全模組（可並行）                        │
-│   輸出：module_M1.json ~ module_M7.json → findings.json│
+│   M1~M8 八大安全模組（可並行）                        │
+│   輸出：module_M1.json ~ module_M8.json → findings.json│
 ├──────────────────────────────────────────────────────┤
 │     Layer 3：評分 & 報告（cypulse/scoring/ + report/） │
-│   七維度加權評分 → HTML/PDF/CSV 報告                  │
+│   八維度加權評分 → HTML/PDF/CSV 報告                  │
 │   輸出：score.json + report.html + report.pdf         │
 └──────────────────────────────────────────────────────┘
 ```
@@ -60,8 +60,8 @@
     │
     ├── Python 3.11 Runtime
     ├── PD Tools (Go binaries): subfinder, httpx, nuclei, dnsx, naabu
-    ├── System Tools: nmap, testssl.sh, dnsrecon
-    ├── Python Packages: checkdmarc, dnstwist, h8mail, jinja2, weasyprint
+    ├── System Tools: nmap, testssl.sh, dnsrecon, s3scanner
+    ├── Python Packages: checkdmarc, dnstwist, jinja2, weasyprint
     └── Noto Sans TC Font
     │
     └── Volume Mount: ./data/ (掃描結果持久化)
@@ -85,7 +85,8 @@
 |----------|------|----------|----------|----------|
 | `cli` | CLI 入口、參數解析、流程編排 | `main()` | 全部模組 | argparse |
 | `discovery` | 資產探勘（5 個子模組） | `run_discovery(domain) → Assets` | — | subfinder, amass, dnsx, httpx, naabu |
-| `analysis` | 七大安全分析（7 個子模組） | `AnalysisModule.run(assets) → ModuleResult` | — | nuclei, nmap, checkdmarc, etc. |
+| `analysis` | 八大安全分析（8 個子模組 M1–M8） | `AnalysisModule.run(assets) → ModuleResult` | — | nuclei, nmap, testssl.sh, checkdmarc, dnstwist, s3scanner, HIBP/LeakCheck API |
+| `remediation` | 補救建議 playbooks（9 項） | `get_remediation(finding) → Playbook` | — | — |
 | `scoring` | 評分引擎 | `calculate_score(findings) → Score` | — | — |
 | `report` | 報告產出 | `generate_report(score, findings) → files` | — | Jinja2, weasyprint |
 | `automation` | diff、通知 | `diff()`, `notify()` | scoring, report | requests, smtplib |
@@ -148,7 +149,7 @@ def run_discovery(domain: str, config: dict) -> Assets:
 
 #### Analysis 模組（cypulse/analysis/）
 
-**職責：** 七大安全分析模組，各自封裝不同工具，輸出標準化 ModuleResult
+**職責：** 八大安全分析模組，各自封裝不同工具，輸出標準化 ModuleResult
 
 **核心介面：**
 
@@ -158,7 +159,7 @@ class AnalysisModule(ABC):
 
     @abstractmethod
     def module_id(self) -> str:
-        """模組代號（M1~M7）"""
+        """模組代號（M1~M8）"""
 
     @abstractmethod
     def module_name(self) -> str:
@@ -180,9 +181,10 @@ class WebSecurityModule(AnalysisModule):     # M1, weight=0.25, max=25
 class IPReputationModule(AnalysisModule):    # M2, weight=0.15, max=15
 class NetworkSecurityModule(AnalysisModule): # M3, weight=0.20, max=20
 class DNSSecurityModule(AnalysisModule):     # M4, weight=0.15, max=15
-class EmailSecurityModule(AnalysisModule):   # M5, weight=0.10, max=10
+class EmailSecurityModule(AnalysisModule):   # M5, weight=0.08, max=8
 class DarkWebModule(AnalysisModule):         # M6, weight=0.10, max=10
-class FakeDomainModule(AnalysisModule):      # M7, weight=0.05, max=5
+class FakeDomainModule(AnalysisModule):      # M7, weight=0.03, max=3
+class CloudExposureModule(AnalysisModule):   # M8, weight=0.04, max=4
 ```
 
 **決策說明：** 使用 ABC（Abstract Base Class）確保所有模組實作統一介面，新增模組只需繼承 `AnalysisModule` 並實作 4 個方法。
@@ -191,13 +193,13 @@ class FakeDomainModule(AnalysisModule):      # M7, weight=0.05, max=5
 
 #### Scoring 模組（cypulse/scoring/）
 
-**職責：** 接收七大模組結果，計算加權總分與等級
+**職責：** 接收八大模組結果，計算加權總分與等級
 
 **核心介面：**
 
 ```python
 class ScoringEngine:
-    """七維度加權評分引擎"""
+    """八維度加權評分引擎（線性化等級見 ADR-004、權重見 ADR-005）"""
 
     def calculate(self, findings: Findings) -> Score:
         """
@@ -222,16 +224,17 @@ WEIGHTS = {
     "M2": {"weight": 0.15, "max_score": 15},
     "M3": {"weight": 0.20, "max_score": 20},
     "M4": {"weight": 0.15, "max_score": 15},
-    "M5": {"weight": 0.10, "max_score": 10},
+    "M5": {"weight": 0.08, "max_score":  8},
     "M6": {"weight": 0.10, "max_score": 10},
-    "M7": {"weight": 0.05, "max_score":  5},
+    "M7": {"weight": 0.03, "max_score":  3},
+    "M8": {"weight": 0.04, "max_score":  4},
 }
 
-GRADES = {
+GRADES = {           # 線性化版本，見 ADR-004
     "A": (90, 100),
-    "B": (80, 89),
-    "C": (70, 79),
-    "D": (0, 69),
+    "B": (75, 89),
+    "C": (60, 74),
+    "D": (0, 59),
 }
 ```
 
@@ -470,7 +473,7 @@ data/example.com/2026-03-12T020000/
 ├── module_M5.json
 ├── module_M6.json
 ├── module_M7.json
-├── findings.json        # 整合 M1~M7
+├── findings.json        # 整合 M1~M8
 ├── score.json           # Score
 ├── report.html
 ├── report.pdf
@@ -593,7 +596,7 @@ def sanitize_domain(domain: str) -> str:
 | 階段 | 策略 | 預期時間 |
 |------|------|----------|
 | 資產探勘 | subfinder + amass 並行 → dnsx → naabu + httpx 並行 | 5-8 分鐘 |
-| 七大模組 | 初版序列執行，Phase 2 改為 multiprocessing 並行 | 10-20 分鐘 |
+| 八大模組 | 初版序列執行，Phase 2 改為 multiprocessing 並行 | 10-20 分鐘 |
 | 評分計算 | 純 Python 計算 | < 1 秒 |
 | 報告產出 | Jinja2 + weasyprint | 10-30 秒 |
 
@@ -606,7 +609,7 @@ def sanitize_domain(domain: str) -> str:
 
 ### 6.3 未來優化方向
 
-- `asyncio` + `subprocess` 實現七大模組真正並行
+- `asyncio` + `subprocess` 實現八大模組真正並行
 - 增量掃描（僅掃描新增/變更的資產）
 - 結果快取（相同 asset 在 TTL 內不重複掃描）
 
@@ -617,6 +620,10 @@ def sanitize_domain(domain: str) -> str:
 | ADR ID | 標題 | 影響的設計決策 |
 |--------|------|----------------|
 | ADR-001 | 初始技術棧選型（Python + PD + Docker） | 全部模組設計、部署架構 |
+| ADR-002 | 七維度加權評分演算法 | `scoring/engine.py`、`scoring/weights.py` |
+| ADR-003 | API Fallback 至免費資料源 | `analysis/ip_reputation.py`、`analysis/darkweb.py` |
+| ADR-004 | 評分去重、等級線性化與補救建議 | `scoring/weights.py`（GRADES）、`remediation/playbooks.py` |
+| ADR-005 | M8 雲端資產暴露模組 | `analysis/cloud_exposure.py`、新增 M8 至 WEIGHTS |
 
 ---
 
@@ -626,7 +633,7 @@ def sanitize_domain(domain: str) -> str:
 
 | 項目 | 說明 | 優先級 | 預計解決版本 |
 |------|------|--------|--------------|
-| 序列掃描 | 七大模組目前序列執行 | Medium | v0.2.0 |
+| 序列掃描 | 八大模組目前序列執行 | Medium | v0.3.0 |
 | JSON 儲存 | 大量歷史掃描時 I/O 瓶頸 | Low | v0.3.0 |
 | PD 版本管理 | 無自動更新 binary 機制 | Low | v0.2.0 |
 

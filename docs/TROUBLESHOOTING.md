@@ -45,6 +45,36 @@ nuclei -version
 
 ---
 
+### M8 雲端暴露顯示 `status: partial` / `s3scanner not installed`
+
+**症狀：** 掃描結果中 M8 模組 status 為 partial、finding 說明 "s3scanner 未安裝"。
+
+**原因：** `cypulse/analysis/cloud_exposure.py` 呼叫 `check_tool("s3scanner")` 失敗。
+
+**解法：**
+
+使用 Docker 推薦，image 已預裝。若本機執行：
+
+```bash
+# 下載 s3scanner Go binary（官方 release）
+curl -L https://github.com/sa7mon/S3Scanner/releases/latest/download/s3scanner-linux-amd64 \
+  -o /usr/local/bin/s3scanner
+chmod +x /usr/local/bin/s3scanner
+s3scanner --help
+```
+
+參考 [ADR-005](adr/ADR-005-cloud-exposure-module.md) 了解模組設計決策。
+
+---
+
+### testssl.sh 未找到 / M1 深度 TLS 掃描未執行
+
+**症狀：** M1 finding 出現 "testssl.sh 未安裝，TLS 深度掃描未執行"。
+
+**解法：** Docker 已預裝；本機可依 Dockerfile 流程手動安裝 testssl.sh 3.2 版，或接受 httpx 基本 TLS 檢測。
+
+---
+
 ## API Key 相關
 
 ### 分析結果顯示 "partial" 或資料來源為免費版

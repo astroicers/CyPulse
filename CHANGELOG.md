@@ -4,6 +4,39 @@
 
 ---
 
+## [0.2.0] - 2026-04-17
+
+### Added
+
+- **M8 雲端資產暴露模組**（S3Scanner）— 偵測 S3 / GCS / Azure Blob 公開 bucket（見 [ADR-005](docs/adr/ADR-005-cloud-exposure-module.md)）
+- **M1 testssl.sh TLS 深度掃描**（憑證、弱 cipher、HSTS）
+- **M2 IP-API.com ASN/ISP 可疑性檢查**（免費 API，無需 key）
+- **補救建議擴充至 9 項**（涵蓋八大模組高頻 finding）
+- **Notifier 整合測試補齊**：`send_alerts`、SMTP 錯誤、HTTP 非 200 覆蓋
+- **pipeline 埠去重**：避免 naabu 重複回傳相同 port
+- **flake8 設定檔** `.flake8`（max-line-length=100，對齊 black）
+
+### Changed
+
+- **評分權重重新平衡**（見 ADR-005）：M5 10→8%、M7 5→3%、新增 M8 4%；八大總和仍為 100%
+- **等級閾值線性化**（見 [ADR-004](docs/adr/ADR-004-scoring-dedup-and-remediation.md)）：A(90–100)、B(75–89)、C(60–74)、D(0–59)
+- **M1 per-header-type 彙總扣分**：每種 header 最多扣 5 分並以單一 finding 呈現，避免 findings 爆炸
+- **pytest 264 測試、整體覆蓋率 85%**
+
+### Fixed
+
+- **M1 httpx security headers 永遠為空的失真**：`httpx_tool.py` 加 `-irh` 並解析 PD httpx snake_case header dict，修復前 M1 永遠 0 分
+- **subprocess retry backoff 上限**：`max_backoff=60s` 避免無限增長
+- **測試檔 F401/E303 lint 違規**：移除 11 筆未使用 import、2 筆多餘空行
+
+### Known Issues / Technical Debt
+
+- D 等級範圍（0–59）仍偏大，未再細分（見 ADR-002）
+- weasyprint PDF 在 ARM 架構有字型相容性問題（需 Noto CJK）
+- HIBP 免費 fallback 有 rate limit
+
+---
+
 ## [0.1.0] - 2026-03-16
 
 ### Added

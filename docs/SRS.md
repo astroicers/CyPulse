@@ -19,12 +19,12 @@
 
 ### 1.2 專案範圍
 
-CyPulse 目標是以 100% 開源工具，建立完整的 EASM 資安曝險評級能力。透過自動化流水線整合子網域探勘、漏洞掃描、暗網監控、釣魚偵測等七大面向，輸出可量化的資安曝險分數與報告。
+CyPulse 目標是以 100% 開源工具，建立完整的 EASM 資安曝險評級能力。透過自動化流水線整合子網域探勘、漏洞掃描、暗網監控、釣魚偵測、雲端暴露偵測等八大面向，輸出可量化的資安曝險分數與報告。
 
 **範圍內（In Scope）：**
 
 - 子網域被動列舉與資產探勘（subfinder / amass / dnsx / httpx / naabu）
-- 七大安全分析模組（網站安全、IP 信譽、網路服務、DNS 安全、郵件安全、暗網憑證、偽冒域名）
+- 八大安全分析模組（網站安全、IP 信譽、網路服務、DNS 安全、郵件安全、暗網憑證、偽冒域名、雲端資產暴露）
 - 七維度加權評分演算法（0-100 分，A/B/C/D 等級）
 - 繁體中文 HTML / PDF 報告輸出
 - JSON / CSV 原始資料匯出
@@ -90,20 +90,21 @@ CyPulse 目標是以 100% 開源工具，建立完整的 EASM 資安曝險評級
 
 | ID | 需求描述 | 優先級 | 對應 ROADMAP | 驗收標準 |
 |----|----------|--------|--------------|----------|
-| FR-201 | M1 網站服務安全：整合 nuclei HTTP 模板掃描（misconfig / exposures），檢測 TLS 版本與 Security Headers | Must Have | M2 | 輸出 module_M1.json，含弱點清單與扣分明細 |
-| FR-202 | M2 IP 信譽：查詢 AbuseIPDB API 與 Spamhaus DROP list，判定 IP 黑名單/灰名單狀態 | Must Have | M2 | 輸出 module_M2.json，每個 IP 含信譽狀態 |
-| FR-203 | M3 網路服務安全：使用 nmap + nuclei CVE 模板掃描高危 Port 與已知漏洞 | Must Have | M2 | 輸出 module_M3.json，含 CVE 編號與嚴重等級 |
+| FR-201 | M1 網站服務安全：整合 nuclei HTTP 模板掃描（misconfig / exposures）、testssl.sh TLS 深度掃描，檢測 TLS 版本與 Security Headers | Must Have | M2 | 輸出 module_M1.json，含弱點清單與扣分明細 |
+| FR-202 | M2 IP 信譽：查詢 AbuseIPDB API、IP-API ASN/ISP、Shodan InternetDB、GreyNoise，判定 IP 黑名單/灰名單與可疑 ISP 狀態 | Must Have | M2 | 輸出 module_M2.json，每個 IP 含信譽狀態 |
+| FR-203 | M3 網路服務安全：使用 nmap + vulners NSE 掃描高危 Port 與已知 CVE | Must Have | M2 | 輸出 module_M3.json，含 CVE 編號與嚴重等級 |
 | FR-204 | M4 網域系統安全：檢查 SOA/MX/DNSSEC 設定，偵測 Zone Transfer 漏洞 | Should Have | M2 | 輸出 module_M4.json，含 DNSSEC 與 Zone Transfer 檢測結果 |
 | FR-205 | M5 郵件安全：使用 checkdmarc 檢測 SPF/DKIM/DMARC 設定 | Should Have | M2 | 輸出 module_M5.json，含三項郵件安全機制檢測結果 |
-| FR-206 | M6 暗網外洩憑證：整合 h8mail + HIBP API 查詢 domain 相關 Email 外洩記錄 | Nice to Have | M2 | 輸出 module_M6.json，含外洩帳號清單與來源 |
+| FR-206 | M6 暗網外洩憑證：HIBP API 查詢（付費）+ LeakCheck 免費 fallback，取得 domain 相關 Email 外洩記錄 | Nice to Have | M2 | 輸出 module_M6.json，含外洩帳號清單與來源 |
 | FR-207 | M7 可疑偽冒網域：使用 dnstwist 生成 typosquat 變體，dnsx 驗證已解析域名 | Nice to Have | M2 | 輸出 module_M7.json，含已解析的偽冒域名清單 |
+| FR-208 | M8 雲端資產暴露：使用 s3scanner 掃描以 domain 衍生的常見 bucket 名稱（S3 / GCS / Azure Blob） | Nice to Have | M5 | 輸出 module_M8.json，含公開可讀/可寫 bucket 清單 |
 
 ### 3.3 評分與報告模組（FR-300）
 
 | ID | 需求描述 | 優先級 | 對應 ROADMAP | 驗收標準 |
 |----|----------|--------|--------------|----------|
-| FR-301 | 系統應實作七維度加權評分演算法，輸出 0-100 分及 A/B/C/D 等級 | Must Have | M3 | 輸入 findings.json → 輸出 score.json，分數與等級正確 |
-| FR-302 | 系統應產出繁體中文 HTML 報告，含七大模組分頁與分數儀表板 | Must Have | M3 | HTML 報告可在瀏覽器正常顯示，繁中無亂碼 |
+| FR-301 | 系統應實作八維度加權評分演算法，輸出 0-100 分及 A/B/C/D 等級（權重見 ADR-005，閾值見 ADR-004 線性化版本） | Must Have | M3 | 輸入 findings.json → 輸出 score.json，分數與等級正確 |
+| FR-302 | 系統應產出繁體中文 HTML 報告，含八大模組分頁與分數儀表板 | Must Have | M3 | HTML 報告可在瀏覽器正常顯示，繁中無亂碼 |
 | FR-303 | 系統應支援將 HTML 報告轉為 PDF，使用 Noto Sans TC 中文字型 | Must Have | M3 | PDF 報告繁中正常顯示，無亂碼 |
 | FR-304 | 系統應支援 JSON 原始資料與 CSV 匯出（資產清單 / CVE 清單） | Should Have | M3 | CSV 檔案可用 Excel 正確開啟 |
 
@@ -172,7 +173,7 @@ CyPulse 目標是以 100% 開源工具，建立完整的 EASM 資安曝險評級
 
 **Acceptance Criteria:**
 
-- [ ] 七大模組全部執行完畢後產出總評分（0-100）
+- [ ] 八大模組全部執行完畢後產出總評分（0-100）
 - [ ] 評分包含 A/B/C/D 等級與各維度分數
 - [ ] 評分邏輯透明，可解釋每個扣分項目
 
@@ -188,7 +189,7 @@ CyPulse 目標是以 100% 開源工具，建立完整的 EASM 資安曝險評級
 
 **Acceptance Criteria:**
 
-- [ ] HTML 報告包含七大模組分頁、分數儀表板
+- [ ] HTML 報告包含八大模組分頁、分數儀表板
 - [ ] PDF 報告繁中字型正常顯示
 - [ ] 報告包含風險項目明細與改善建議
 - [ ] 支援 CSV 匯出供進一步分析
@@ -252,7 +253,7 @@ CyPulse 目標是以 100% 開源工具，建立完整的 EASM 資安曝險評級
 1. 使用者執行 `cypulse scan example.com`
 2. 系統執行 Layer 1 資產探勘（subfinder → dnsx → naabu → httpx）
 3. 系統輸出 assets.json
-4. 系統依序執行七大安全分析模組（M1-M7），各產出 module_MN.json
+4. 系統依序執行八大安全分析模組（M1–M8），各產出 module_MN.json
 5. 系統整合為 findings.json
 6. 系統執行評分演算法，產出 score.json
 7. 系統渲染 HTML 報告
@@ -268,7 +269,7 @@ CyPulse 目標是以 100% 開源工具，建立完整的 EASM 資安曝險評級
 
 - **E1 — 工具未安裝：** 偵測到缺少必要 CLI 工具 → 輸出錯誤訊息與安裝指引
 - **E2 — 目標無回應：** DNS 解析失敗 → 記錄錯誤，跳過該子網域繼續
-- **E3 — API 額度耗盡：** h8mail / AbuseIPDB API 返回 429 → 記錄警告，該模組標記為「部分結果」
+- **E3 — API 額度耗盡：** HIBP / AbuseIPDB API 返回 429 → 記錄警告，該模組標記為「部分結果」並 fallback 至免費源（見 ADR-003）
 
 ---
 
@@ -302,7 +303,7 @@ CyPulse 目標是以 100% 開源工具，建立完整的 EASM 資安曝險評級
 | `ScanResult` | 完整掃描結果 | `data/<domain>/<timestamp>/scan_result.json` | JSON |
 | `Assets` | 資產清單 | `data/<domain>/<timestamp>/assets.json` | JSON |
 | `ModuleResult` | 單一模組分析結果 | `data/<domain>/<timestamp>/module_M<N>.json` | JSON |
-| `Findings` | 七大模組整合結果 | `data/<domain>/<timestamp>/findings.json` | JSON |
+| `Findings` | 八大模組整合結果 | `data/<domain>/<timestamp>/findings.json` | JSON |
 | `Score` | 評分結果 | `data/<domain>/<timestamp>/score.json` | JSON |
 | `DiffReport` | 差異比對結果 | `data/<domain>/<timestamp>/diff.json` | JSON |
 
@@ -317,15 +318,16 @@ CyPulse 目標是以 100% 開源工具，建立完整的 EASM 資安曝險評級
   "assets_count": 42,
   "score": {
     "total": 78,
-    "grade": "C",
+    "grade": "B",
     "dimensions": {
       "M1_web_security": 18,
       "M2_ip_reputation": 15,
       "M3_network_security": 12,
       "M4_dns_security": 10,
-      "M5_email_security": 8,
+      "M5_email_security": 6,
       "M6_darkweb_credentials": 10,
-      "M7_fake_domains": 5
+      "M7_fake_domains": 3,
+      "M8_cloud_exposure": 4
     }
   },
   "findings_summary": {
@@ -349,6 +351,7 @@ data/
 │   │   ├── module_M2.json
 │   │   ├── ...
 │   │   ├── module_M7.json
+│   │   ├── module_M8.json
 │   │   ├── findings.json
 │   │   ├── score.json
 │   │   ├── report.html
@@ -397,19 +400,20 @@ Target: example.com
   ✓ M2 IP 信譽:      15/15
   ✓ M3 網路服務安全: 12/20
   ✓ M4 DNS 安全:     10/15
-  ✓ M5 郵件安全:      8/10
+  ✓ M5 郵件安全:      6/8
   ✓ M6 暗網憑證:     10/10
-  ✓ M7 偽冒域名:      5/5
+  ✓ M7 偽冒域名:      3/3
+  ✓ M8 雲端暴露:      4/4
 
 [3/4] 評分計算...
-  總分: 78/100 → 等級: C
+  總分: 78/100 → 等級: B
 
 [4/4] 報告輸出...
-  ✓ HTML: data/example.com/2026-03-12T020000/report.html
-  ✓ PDF:  data/example.com/2026-03-12T020000/report.pdf
+  ✓ HTML: data/example.com/2026-04-17T020000/report.html
+  ✓ PDF:  data/example.com/2026-04-17T020000/report.pdf
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-掃描完成 | 耗時: 18m 32s | 等級: C (78/100)
+掃描完成 | 耗時: 18m 32s | 等級: B (78/100)
 ```
 
 ---
@@ -445,8 +449,11 @@ Target: example.com
 | subfinder / httpx / nuclei / dnsx / naabu | 資產探勘 + 漏洞掃描 | 無（核心依賴） |
 | checkdmarc | 郵件安全分析 | 手動 DNS 查詢 |
 | dnstwist | 偽冒域名偵測 | 手動排列組合 |
-| h8mail | 暗網憑證搜尋 | HIBP 網頁版手動查詢 |
-| AbuseIPDB API | IP 信譽查詢 | Spamhaus DROP list（離線） |
+| HIBP API | 暗網憑證搜尋 | LeakCheck 免費 API（見 ADR-003） |
+| AbuseIPDB API | IP 信譽查詢 | IP-API / Shodan / GreyNoise（免費） |
+| testssl.sh | TLS 深度掃描 | httpx 基本 TLS 資訊 |
+| s3scanner | 雲端 bucket 暴露 | 手動 bucket 枚舉 |
+| nmap + vulners | 服務指紋 + CVE 偵測 | nuclei CVE templates |
 | weasyprint | PDF 產出 | 瀏覽器列印 HTML |
 | Jinja2 | HTML 模板渲染 | 無（核心依賴） |
 
@@ -468,6 +475,7 @@ Target: example.com
 | FR-205 | M5 郵件安全 | US-201 | T105 |
 | FR-206 | M6 暗網憑證 | US-201 | T106 |
 | FR-207 | M7 偽冒域名 | US-201 | T107 |
+| FR-208 | M8 雲端資產暴露 | US-201 | T109 |
 | FR-301 | 評分演算法 | US-201 | T201 |
 | FR-302 | HTML 報告 | US-301 | T203 |
 | FR-303 | PDF 報告 | US-301 | T204 |
@@ -483,28 +491,30 @@ Target: example.com
 
 | 模組 | 權重 | 滿分 | 扣分邏輯 |
 |------|------|------|----------|
-| M1 網站服務安全 | 25% | 25 | Critical CVE -15 / 缺少 HSTS -5 / Mixed Content -3 |
-| M2 IP 信譽 | 15% | 15 | 黑名單命中 -10 / 灰名單 -5 |
+| M1 網站服務安全 | 25% | 25 | 缺 header per-type 上限 -5（含受影響子網域彙總）/ TLS < 1.2 -10 / testssl 嚴重性分級 |
+| M2 IP 信譽 | 15% | 15 | AbuseIPDB score > 50 -10 / 20–50 -5 / IP-API 可疑 ASN -3 / Shodan vuln 命中 |
 | M3 網路服務安全 | 20% | 20 | 高危 Port 開放 -10 / CVE 每個 -5 / 未加密服務 -5 |
 | M4 DNS 安全 | 15% | 15 | Zone Transfer -10 / 無 DNSSEC -5 |
-| M5 郵件安全 | 10% | 10 | 無 DMARC -6 / 無 SPF -4 / 無 DKIM -2 |
+| M5 郵件安全 | 8% | 8 | 無 DMARC -6 / 無 SPF -4 / 無 DKIM -2（扣分上限 8） |
 | M6 暗網憑證 | 10% | 10 | 每組外洩憑證 -3（上限 -10） |
-| M7 偽冒域名 | 5% | 5 | 已解析偽冒域名每個 -1（上限 -5） |
+| M7 偽冒域名 | 3% | 3 | 已解析偽冒域名每個 -1（上限 -3） |
+| M8 雲端資產暴露 | 4% | 4 | 公開可寫 bucket -critical / 公開可讀 -high / 私有存在 -info |
 
-### B. 評級對照表
+### B. 評級對照表（線性化版本，見 ADR-004）
 
 | 等級 | 分數範圍 | 說明 |
 |------|----------|------|
 | A | 90–100 分 | 資安防護良好 |
-| B | 80–89 分 | 資安防護尚可，有改善空間 |
-| C | 70–79 分 | 存在明顯風險，建議儘速改善 |
-| D | < 70 分 | 高風險，需立即處理 |
+| B | 75–89 分 | 資安防護尚可，有改善空間 |
+| C | 60–74 分 | 存在明顯風險，建議儘速改善 |
+| D | 0–59 分 | 高風險，需立即處理 |
 
 ### C. 變更歷史
 
 | 版本 | 日期 | 變更摘要 | 作者 |
 |------|------|----------|------|
 | v0.1.0 | 2026-03-12 | 初版建立 | CyPulse 開發團隊 |
+| v0.2.0 | 2026-04-17 | 新增 FR-208（M8 雲端資產暴露）、權重調整、等級閾值線性化（ADR-004/ADR-005） | CyPulse 開發團隊 |
 
 ### D. 相關文件
 

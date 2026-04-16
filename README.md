@@ -2,7 +2,7 @@
 
 開源 EASM（External Attack Surface Management）資安曝險評級平台。
 
-以 100% 開源工具實作七維度資安掃描與評級，產出 0-100 量化分數與 A/B/C/D 等級，
+以 100% 開源工具實作八維度資安掃描與評級，產出 0-100 量化分數與 A/B/C/D 等級，
 輸出繁體中文 HTML / PDF / CSV 報告。
 
 ---
@@ -12,20 +12,25 @@
 **資產探勘（5 工具聯動）**
 - subfinder / amass — 子網域被動列舉
 - dnsx — DNS 解析驗證
-- httpx — HTTP 存活與 Header 偵測
-- naabu — 埠掃描
+- httpx — HTTP 存活、Security Header 採集（`-irh`）、TLS 版本偵測
+- naabu — 埠掃描（結果去重）
 
-**七大安全分析模組**
+**八大安全分析模組**
 
 | 模組 | 維度 | 權重 | 滿分 |
 |------|------|------|------|
-| M1 | Web Security（安全 Header / TLS / Nuclei） | 25% | 25 |
-| M2 | IP Reputation（AbuseIPDB） | 15% | 15 |
-| M3 | Network Security（高風險埠 / Nmap） | 20% | 20 |
+| M1 | Web Security（Security Header / TLS / Nuclei / testssl.sh） | 25% | 25 |
+| M2 | IP Reputation（AbuseIPDB + IP-API ASN/ISP + Shodan + GreyNoise） | 15% | 15 |
+| M3 | Network Security（高風險埠 / Nmap + vulners） | 20% | 20 |
 | M4 | DNS Security（DNSSEC / Zone Transfer） | 15% | 15 |
-| M5 | Email Security（SPF / DKIM / DMARC） | 10% | 10 |
-| M6 | Dark Web Exposure（HIBP） | 10% | 10 |
-| M7 | Fake Domains（dnstwist） | 5% | 5 |
+| M5 | Email Security（SPF / DKIM / DMARC） | 8% | 8 |
+| M6 | Dark Web Exposure（HIBP + LeakCheck fallback） | 10% | 10 |
+| M7 | Fake Domains（dnstwist） | 3% | 3 |
+| M8 | Cloud Exposure（S3Scanner — S3 / GCS / Azure Blob） | 4% | 4 |
+
+> 權重分配見 [ADR-005](docs/adr/ADR-005-cloud-exposure-module.md)；等級閾值線性化
+> 見 [ADR-004](docs/adr/ADR-004-scoring-dedup-and-remediation.md)：
+> A(90–100)、B(75–89)、C(60–74)、D(0–59)。
 
 **其他**
 - 加權評分演算法（0-100 分，A/B/C/D 等級）
@@ -72,16 +77,16 @@ cypulse scan example.com
 [CyPulse] Phase 1: 資產探勘...
 [CyPulse]   子網域: 12, 存活: 10, HTTP: 8
 [CyPulse] Phase 2: 風險分析...
-[CyPulse]   完成 7 個模組分析
+[CyPulse]   完成 8 個模組分析
 [CyPulse] Phase 3: 評分...
-[CyPulse]   總分: 78/100 (C)
+[CyPulse]   總分: 78/100 (B)
 [CyPulse] Phase 4: 報告產出...
-[CyPulse]   HTML: data/example.com/20260312_020000/report.html
-[CyPulse]   PDF: data/example.com/20260312_020000/report.pdf
+[CyPulse]   HTML: data/example.com/20260417_020000/report.html
+[CyPulse]   PDF: data/example.com/20260417_020000/report.pdf
 [CyPulse]   CSV: 2 files
 
-[SCAN COMPLETE] domain=example.com score=78 grade=C duration=1102s modules=7/7 findings=47
-[CyPulse] 結果儲存於: data/example.com/20260312_020000
+[SCAN COMPLETE] domain=example.com score=78 grade=B duration=1180s modules=8/8 findings=52
+[CyPulse] 結果儲存於: data/example.com/20260417_020000
 ```
 
 ---
@@ -93,7 +98,7 @@ cypulse scan example.com
 執行完整掃描（探勘 + 分析 + 評分 + 報告）。
 
 ```bash
-cypulse scan example.com                        # 完整掃描
+cypulse scan example.com                        # 完整掃描（M1–M8）
 cypulse scan example.com --modules M1,M5        # 僅執行指定模組
 cypulse scan example.com --output ./results     # 指定輸出目錄
 ```
@@ -140,16 +145,17 @@ SLACK_WEBHOOK_URL=https://... # 選用，Slack 通知
 ```
 cypulse/
 ├── cli.py                  # CLI 入口
-├── discovery/              # 資產探勘（subfinder/amass/dnsx/httpx/naabu）
-├── analysis/               # 七大安全分析模組（M1-M7）
+├── discovery/              # 資產探勘（subfinder/amass/dnsx/httpx/naabu/web_sources）
+├── analysis/               # 八大安全分析模組（M1–M8）
 ├── scoring/                # 加權評分引擎
 ├── report/                 # HTML/PDF/CSV 報告產出
 │   └── templates/          # Jinja2 報告模板
 ├── automation/             # 差異比對、通知
 │   ├── diff.py
 │   └── notifier.py
+├── remediation/            # 補救建議 playbooks（9 項）
 ├── models/                 # 資料模型（dataclass）
-└── utils/                  # 通用工具
+└── utils/                  # 通用工具（sanitize / subprocess retry / logging）
 ```
 
 ---
@@ -182,6 +188,8 @@ MIT License
 | [ADR-001](docs/adr/ADR-001-initial-technology-stack.md) | 技術棧選型決策 |
 | [ADR-002](docs/adr/ADR-002-scoring-algorithm.md) | 評分演算法設計決策 |
 | [ADR-003](docs/adr/ADR-003-api-fallback-free-sources.md) | API Fallback 機制決策 |
+| [ADR-004](docs/adr/ADR-004-scoring-dedup-and-remediation.md) | 評分去重、等級線性化與補救建議設計 |
+| [ADR-005](docs/adr/ADR-005-cloud-exposure-module.md) | M8 雲端資產暴露模組設計決策 |
 | [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | 常見問題排查 |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 貢獻指南 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本變更記錄 |
