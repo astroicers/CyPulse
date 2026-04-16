@@ -11,12 +11,21 @@ logger = structlog.get_logger()
 def _compute_module_coverage(module_result: ModuleResult) -> float:
     """計算單一模組的來源覆蓋率。
 
-    - 無 sources 定義的模組（M3/M4/M5/M7）→ 1.0
-    - 有 sources：sum(weight of success) / sum(weight of non-skipped)
+    - 無 sources 定義的模組（M3/M4/M5/M7）：依 status 推斷
+        * success → 1.0
+        * partial → 0.5（部分資料，無法精確量化）
+        * error   → 0.0（模組整個失敗，不能謊報 1.0）
+        * skipped → 1.0（模組未啟用，不計入分母）
+    - 有 sources：sum(success weight) / sum(non-skipped weight)
     - 全部 skipped → 1.0（視為此次掃描無此模組能力需求）
     """
     if not module_result.sources:
-        return 1.0
+        status = module_result.status
+        if status == "error":
+            return 0.0
+        if status == "partial":
+            return 0.5
+        return 1.0  # success / skipped
     non_skipped = [s for s in module_result.sources if s.status != "skipped"]
     if not non_skipped:
         return 1.0

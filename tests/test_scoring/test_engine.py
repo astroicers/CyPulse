@@ -107,7 +107,12 @@ class TestScoringEngine:
         assert any(e.module_id == "M1" for e in score.explanations)
 
     def test_partial_module_has_explanation(self):
-        """Modules with partial status and reduced score should generate explanation."""
+        """Modules with partial status and reduced score should generate explanation.
+
+        status=partial + 無 sources → 產生兩筆 explanation：
+        - 「未完成檢測」（扣分說明）
+        - 「部分來源未回應」（coverage=0.5 的 info 訊息）
+        """
         modules = [
             ModuleResult(module_id="M1", module_name="Web Security", score=20,
                          max_score=25, findings=[], execution_time=0.0, status="partial"),
@@ -116,8 +121,9 @@ class TestScoringEngine:
         engine = ScoringEngine()
         score = engine.calculate(findings)
         assert score.total == 20
-        assert len(score.explanations) == 1
-        assert "未完成檢測" in score.explanations[0].reason
+        reasons = [e.reason for e in score.explanations]
+        assert any("未完成檢測" in r for r in reasons)
+        assert any("部分來源未回應" in r for r in reasons)
 
 
 class TestSaveScore:
@@ -249,6 +255,57 @@ class TestConfidence:
         assert len(coverage_explanations) == 1
         assert coverage_explanations[0].deduction == 0
         assert "shodan" in coverage_explanations[0].reason
+
+    def test_coverage_reflects_module_error_without_sources(self):
+        """M5 crash 時 sources=[] 但 status=error → coverage=0.0（不能謊報 1.0）。
+
+        這是實測 ylh.gov.tw 掃描時發現的 bug：checkdmarc import 失敗讓 M5 status=error，
+        但因 M5 未改成 SourceStatus 架構（sources=[]），confidence 仍算成 1.0。
+        """
+        modules = [
+            ModuleResult(
+                module_id="M5", module_name="郵件安全",
+                score=0, max_score=8,
+                findings=[], raw_data={}, execution_time=0.0,
+                status="error",
+                sources=[],  # 尚未改成 SourceStatus 架構的模組
+            ),
+            self._make_module("M1", 25, 25, sources=[
+                SourceStatus("nuclei", "core", 0.6, "success"),
+                SourceStatus("testssl", "auxiliary", 0.4, "success"),
+            ]),
+        ]
+        findings = Findings(domain="x", timestamp="t", modules=modules)
+        score = ScoringEngine().calculate(findings)
+        # M5 crash → coverage 必須為 0.0，不能是 1.0
+        assert score.source_coverage["M5"] == 0.0
+        # M1 正常 → 1.0
+        assert score.source_coverage["M1"] == 1.0
+        # confidence 應反映 M5 失敗（不再 = 1.0）
+        assert score.confidence < 1.0
+
+    def test_coverage_partial_without_sources_is_half(self):
+        """無 sources 但 status=partial → coverage=0.5（部分資料，無法精確量化）。"""
+        modules = [
+            ModuleResult(
+                module_id="M4", module_name="DNS 安全",
+                score=10, max_score=15,
+                findings=[], raw_data={}, execution_time=0.0,
+                status="partial", sources=[],
+            ),
+        ]
+        findings = Findings(domain="x", timestamp="t", modules=modules)
+        score = ScoringEngine().calculate(findings)
+        assert score.source_coverage["M4"] == 0.5
+
+    def test_coverage_success_without_sources_is_full(self):
+        """無 sources 且 status=success → coverage=1.0（維持既有行為）。"""
+        modules = [
+            self._make_module("M3", 20, 20),  # 無 sources，status 預設 success
+        ]
+        findings = Findings(domain="x", timestamp="t", modules=modules)
+        score = ScoringEngine().calculate(findings)
+        assert score.source_coverage["M3"] == 1.0
 
     def test_score_json_includes_confidence(self):
         """save_score 產出的 JSON 應包含 confidence + source_coverage。"""
