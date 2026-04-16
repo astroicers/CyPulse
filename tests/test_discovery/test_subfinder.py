@@ -17,7 +17,10 @@ class TestSubfinderTool:
     @patch("cypulse.discovery.subfinder.check_tool", return_value=True)
     def test_json_output(self, mock_check, mock_run):
         mock_run.return_value = MagicMock(
-            stdout='{"host":"www.example.com","source":"subfinder"}\n{"host":"api.example.com","source":"subfinder"}\n'
+            stdout=(
+                '{"host":"www.example.com","source":"subfinder"}\n'
+                '{"host":"api.example.com","source":"subfinder"}\n'
+            )
         )
         tool = SubfinderTool()
         result = tool.run("example.com", {})

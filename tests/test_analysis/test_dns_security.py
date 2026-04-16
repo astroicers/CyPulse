@@ -1,8 +1,6 @@
 import subprocess
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from cypulse.analysis.dns_security import DNSSecurityModule
 from cypulse.models import Asset, Assets
 

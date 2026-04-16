@@ -43,6 +43,8 @@ addopts = "-v --tb=short"
 line-length = 100
 target-version = ["py311"]
 
+# flake8 config is in .flake8 (flake8 does not read pyproject.toml natively)
+
 [tool.mypy]
 python_version = "3.11"
 warn_return_any = true

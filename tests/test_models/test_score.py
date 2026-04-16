@@ -29,7 +29,9 @@ class TestDiffReport:
             old_scan="2026-03-01T020000",
             new_scan="2026-03-08T020000",
             score_change=-5,
-            new_findings=[DiffItem(category="new_finding", severity="high", description="New CVE found")],
+            new_findings=[
+                DiffItem(category="new_finding", severity="high", description="New CVE found"),
+            ],
             resolved_findings=[],
             alerts=["Score dropped by 5 points"],
         )

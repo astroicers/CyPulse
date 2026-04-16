@@ -47,6 +47,13 @@ build/
 .venv/
 venv/
 
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.pytest_cache/
+
 # CyPulse
 data/
 config/config.yaml

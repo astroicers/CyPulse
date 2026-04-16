@@ -18,7 +18,6 @@ class TestRunCmd:
         result = run_cmd(["false"], check=False)
         assert result.returncode != 0
 
-
     def test_retry_backoff_capped_at_max_backoff(self):
         """backoff 不應超過 max_backoff（預設 60s）。"""
         sleep_calls = []

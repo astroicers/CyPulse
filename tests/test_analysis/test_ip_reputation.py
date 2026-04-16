@@ -2,8 +2,6 @@ from __future__ import annotations
 import os
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from cypulse.analysis.ip_reputation import IPReputationModule
 from cypulse.models import Asset, Assets
 
@@ -12,7 +10,9 @@ from cypulse.models import Asset, Assets
 # Mock helpers
 # ---------------------------------------------------------------------------
 
-def _mock_shodan_response(vulns: list[str] | None = None, ports: list[int] | None = None) -> MagicMock:
+def _mock_shodan_response(
+    vulns: list[str] | None = None, ports: list[int] | None = None
+) -> MagicMock:
     mock_resp = MagicMock()
     mock_resp.status_code = 200
     mock_resp.json.return_value = {
@@ -59,7 +59,13 @@ def _mock_abuseipdb_response(abuse_score: int = 0, total_reports: int = 0) -> Ma
     return mock_resp
 
 
-def _mock_ipapi_response(status="success", country="US", org="AS9924 Taiwan Fixed Network", asn="AS9924", isp="Taiwan Fixed Network") -> MagicMock:
+def _mock_ipapi_response(
+    status="success",
+    country="US",
+    org="AS9924 Taiwan Fixed Network",
+    asn="AS9924",
+    isp="Taiwan Fixed Network",
+) -> MagicMock:
     mock_resp = MagicMock()
     mock_resp.status_code = 200
     mock_resp.json.return_value = {
@@ -92,7 +98,13 @@ def _route_requests(shodan_resp=None, greynoise_resp=None, abuseipdb_resp=None, 
             if ipapi_resp is None:
                 m = MagicMock()
                 m.status_code = 200
-                m.json.return_value = {"status": "success", "country": "US", "org": "AS9924 Normal ISP", "as": "AS9924", "isp": "Normal ISP"}
+                m.json.return_value = {
+                    "status": "success",
+                    "country": "US",
+                    "org": "AS9924 Normal ISP",
+                    "as": "AS9924",
+                    "isp": "Normal ISP",
+                }
                 return m
             return ipapi_resp
         raise Exception(f"unexpected URL: {url}")
@@ -272,7 +284,10 @@ class TestIPReputationModule:
         abuseipdb_resp = _mock_abuseipdb_response(abuse_score=85, total_reports=42)
 
         with patch.dict(os.environ, {"ABUSEIPDB_API_KEY": "test-key"}):
-            with patch("requests.get", side_effect=_route_requests(shodan_resp, greynoise_resp, abuseipdb_resp)):
+            with patch(
+                "requests.get",
+                side_effect=_route_requests(shodan_resp, greynoise_resp, abuseipdb_resp),
+            ):
                 result = m.run(sample_assets)
 
         abuse_findings = [f for f in result.findings if "AbuseIPDB" in f.title]
@@ -288,7 +303,10 @@ class TestIPReputationModule:
         abuseipdb_resp = _mock_abuseipdb_response(abuse_score=35, total_reports=5)
 
         with patch.dict(os.environ, {"ABUSEIPDB_API_KEY": "test-key"}):
-            with patch("requests.get", side_effect=_route_requests(shodan_resp, greynoise_resp, abuseipdb_resp)):
+            with patch(
+                "requests.get",
+                side_effect=_route_requests(shodan_resp, greynoise_resp, abuseipdb_resp),
+            ):
                 result = m.run(sample_assets)
 
         abuse_findings = [f for f in result.findings if "abuse reports" in f.title]
@@ -304,7 +322,10 @@ class TestIPReputationModule:
         abuseipdb_resp = _mock_abuseipdb_response(abuse_score=0)
 
         with patch.dict(os.environ, {"ABUSEIPDB_API_KEY": "test-key"}):
-            with patch("requests.get", side_effect=_route_requests(shodan_resp, greynoise_resp, abuseipdb_resp)):
+            with patch(
+                "requests.get",
+                side_effect=_route_requests(shodan_resp, greynoise_resp, abuseipdb_resp),
+            ):
                 result = m.run(sample_assets)
 
         assert result.score == m.max_score()
@@ -401,7 +422,10 @@ class TestIPReputationModule:
         abuseipdb_resp = _mock_abuseipdb_response(abuse_score=85, total_reports=42)
 
         with patch.dict(os.environ, {"ABUSEIPDB_API_KEY": "test-key"}):
-            with patch("requests.get", side_effect=_route_requests(shodan_resp, greynoise_resp, abuseipdb_resp)):
+            with patch(
+                "requests.get",
+                side_effect=_route_requests(shodan_resp, greynoise_resp, abuseipdb_resp),
+            ):
                 result = m.run(sample_assets)
 
         assert len(result.findings) == 3

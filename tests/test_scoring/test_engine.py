@@ -91,7 +91,6 @@ class TestScoringEngine:
         assert len(exps) == 1
         assert exps[0].module_id == "M1"
 
-
     def test_error_module_score_zero(self):
         """Modules with error status should contribute 0 and generate explanation."""
         modules = [

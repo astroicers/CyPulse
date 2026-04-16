@@ -145,13 +145,20 @@ class TestTestssl:
         mock_result.returncode = 0
 
         m = WebSecurityModule()
-        with patch("cypulse.analysis.web_security.check_tool", side_effect=lambda t: t == "testssl.sh"), \
-             patch("cypulse.analysis.web_security.run_cmd", return_value=mock_result):
+        with patch(
+            "cypulse.analysis.web_security.check_tool",
+            side_effect=lambda t: t == "testssl.sh",
+        ), patch("cypulse.analysis.web_security.run_cmd", return_value=mock_result):
             result = m.run(sample_assets)
 
         testssl_findings = [
             f for f in result.findings
-            if "testssl" in f.title.lower() or "cert" in f.title.lower() or "certificate" in f.title.lower() or "tls issue" in f.title.lower()
+            if (
+                "testssl" in f.title.lower()
+                or "cert" in f.title.lower()
+                or "certificate" in f.title.lower()
+                or "tls issue" in f.title.lower()
+            )
         ]
         assert len(testssl_findings) >= 1
         assert any(f.severity in ("high", "critical") for f in testssl_findings)

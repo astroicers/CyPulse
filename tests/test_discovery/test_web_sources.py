@@ -144,7 +144,9 @@ class TestQueryWebSources:
         result = query_web_sources("example.com", {})
         subs = [r["subdomain"] for r in result]
         assert len(subs) == len(set(subs))
-        assert set(subs) == {"www.example.com", "api.example.com", "mail.example.com", "db.example.com"}
+        assert set(subs) == {
+            "www.example.com", "api.example.com", "mail.example.com", "db.example.com",
+        }
 
     @patch("cypulse.discovery.web_sources.query_subdomain_center")
     @patch("cypulse.discovery.web_sources.query_hackertarget")

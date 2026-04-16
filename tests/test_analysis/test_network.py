@@ -3,8 +3,6 @@ from __future__ import annotations
 import subprocess
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from cypulse.analysis.network import HIGH_RISK_PORTS, NetworkSecurityModule
 from cypulse.models import Asset, Assets
 

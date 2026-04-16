@@ -1,5 +1,5 @@
 from unittest.mock import patch, MagicMock
-from cypulse.discovery.dnsx import DnsxTool, resolve_subdomains
+from cypulse.discovery.dnsx import DnsxTool
 
 
 class TestDnsxTool:

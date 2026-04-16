@@ -1,9 +1,8 @@
 import os
 import json
 import tempfile
-from unittest.mock import patch
 from cypulse.analysis.runner import run_analysis, save_findings
-from cypulse.models import Asset, Assets, ModuleResult, Finding
+from cypulse.models import Asset, Assets
 
 
 class TestRunAnalysis:

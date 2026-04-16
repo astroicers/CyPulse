@@ -1,5 +1,4 @@
 import logging
-import pytest
 from cypulse.utils.logging import setup_logging
 
 

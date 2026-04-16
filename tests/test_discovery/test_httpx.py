@@ -17,7 +17,11 @@ class TestHttpxTool:
     @patch("cypulse.discovery.httpx_tool.check_tool", return_value=True)
     def test_json_output(self, mock_check, mock_run):
         mock_run.return_value = MagicMock(
-            stdout='{"url":"https://www.example.com","status_code":200,"title":"Example","input":"www.example.com","tls":{"version":"TLSv1.3"}}\n'
+            stdout=(
+                '{"url":"https://www.example.com","status_code":200,'
+                '"title":"Example","input":"www.example.com",'
+                '"tls":{"version":"TLSv1.3"}}\n'
+            )
         )
         tool = HttpxTool()
         result = tool.run("www.example.com", {})

@@ -1,5 +1,4 @@
-import pytest
-from cypulse.scoring.weights import WEIGHTS, GRADES, get_grade
+from cypulse.scoring.weights import WEIGHTS, get_grade
 
 
 def test_weights_sum_to_one():

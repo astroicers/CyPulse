@@ -46,7 +46,10 @@ class TestCloudExposureModule:
     def test_public_read_bucket_found(self, sample_assets):
         """S3Scanner 偵測到公開可讀 bucket 時應產生 high finding。"""
         mock_result = MagicMock()
-        mock_result.stdout = '{"bucket": "example-com", "exists": true, "public_read": true, "region": "us-east-1"}\n'
+        mock_result.stdout = (
+            '{"bucket": "example-com", "exists": true, '
+            '"public_read": true, "region": "us-east-1"}\n'
+        )
         mock_result.returncode = 0
         m = CloudExposureModule()
         with patch("cypulse.analysis.cloud_exposure.check_tool", return_value=True), \
@@ -59,7 +62,10 @@ class TestCloudExposureModule:
     def test_public_write_bucket_critical(self, sample_assets):
         """公開可寫 bucket 應產生 critical finding。"""
         mock_result = MagicMock()
-        mock_result.stdout = '{"bucket": "backup-example-com", "exists": true, "public_write": true, "region": "eu-west-1"}\n'
+        mock_result.stdout = (
+            '{"bucket": "backup-example-com", "exists": true, '
+            '"public_write": true, "region": "eu-west-1"}\n'
+        )
         mock_result.returncode = 0
         m = CloudExposureModule()
         with patch("cypulse.analysis.cloud_exposure.check_tool", return_value=True), \

@@ -1,4 +1,4 @@
-from cypulse.models import Finding, ModuleResult, Findings
+from cypulse.models import Finding, Findings
 
 
 class TestFinding:
