@@ -28,7 +28,7 @@
 |------|-------|--------|
 | Python | 使用者自行安裝 3.10+ | 3.11（Image 內建） |
 | PD Tools | 使用者自行安裝 | Image 預裝（Go binaries） |
-| nmap / testssl.sh | 使用者自行安裝 | Image 預裝 |
+| nmap / testssl.sh / s3scanner | 使用者自行安裝 | Image 預裝 |
 | weasyprint + 字型 | 使用者自行安裝 | Image 預裝 + Noto Sans TC |
 | 掃描結果儲存 | `./data/` | Volume mount `./data/` |
 | 設定檔 | `config/config.yaml` | Volume mount 或環境變數 |
@@ -112,7 +112,7 @@ RUN apt-get update && \
 FROM python:3.11-slim AS runner
 WORKDIR /app
 
-# 系統依賴（weasyprint + nmap + testssl.sh + 字型）
+# 系統依賴（weasyprint + nmap + testssl.sh + s3scanner + 字型）
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         nmap \
@@ -130,12 +130,13 @@ RUN curl -sL https://github.com/drwetter/testssl.sh/archive/refs/heads/3.2/main.
     tar xz -C /opt/ && \
     ln -s /opt/testssl.sh-3.2-main/testssl.sh /usr/local/bin/testssl.sh
 
-# 複製 PD tools
+# 複製 PD tools 與 s3scanner（M8 雲端資產暴露）
 COPY --from=pd-tools /root/go/bin/subfinder /usr/local/bin/
 COPY --from=pd-tools /root/go/bin/httpx /usr/local/bin/
 COPY --from=pd-tools /root/go/bin/nuclei /usr/local/bin/
 COPY --from=pd-tools /root/go/bin/dnsx /usr/local/bin/
 COPY --from=pd-tools /root/go/bin/naabu /usr/local/bin/
+COPY --from=pd-tools /root/go/bin/s3scanner /usr/local/bin/
 
 # 複製 Python 依賴
 COPY --from=deps /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages

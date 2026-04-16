@@ -10,6 +10,8 @@ RUN CGO_ENABLED=0 go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei
 RUN CGO_ENABLED=0 go install -v github.com/projectdiscovery/dnsx/cmd/dnsx@latest
 RUN go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
 RUN CGO_ENABLED=0 go install -v github.com/owasp-amass/amass/v4/...@latest
+# M8 雲端資產暴露模組：s3scanner（sa7mon/S3Scanner）
+RUN CGO_ENABLED=0 go install -v github.com/sa7mon/s3scanner@latest
 
 # ===================== Stage 2: Python Deps =====================
 FROM python:3.11-slim AS deps
@@ -60,6 +62,7 @@ COPY --from=pd-tools /usr/local/bin/nuclei /usr/local/bin/
 COPY --from=pd-tools /usr/local/bin/dnsx /usr/local/bin/
 COPY --from=pd-tools /usr/local/bin/naabu /usr/local/bin/
 COPY --from=pd-tools /usr/local/bin/amass /usr/local/bin/
+COPY --from=pd-tools /usr/local/bin/s3scanner /usr/local/bin/
 
 COPY --chown=cypulse:cypulse . .
 COPY docker-entrypoint.sh /usr/local/bin/
