@@ -238,6 +238,33 @@ GRADES = {           # 線性化版本，見 ADR-004
 }
 ```
 
+**信心分數與來源覆蓋率（見 [ADR-006](adr/ADR-006-source-resilience-and-confidence.md)）：**
+
+```python
+# ModuleResult.sources（每個外部來源追蹤）
+@dataclass
+class SourceStatus:
+    source_id: str       # "shodan" / "hibp" / "nuclei" / "s3scanner"
+    role: str            # "core" | "auxiliary"
+    weight: float        # 同模組內總和 1.0
+    status: str          # "success" | "failed" | "skipped"
+    error: str | None = None
+
+# Score 新增欄位
+@dataclass
+class Score:
+    # ... 既有欄位 ...
+    confidence: float = 1.0              # 整體信心，0.0~1.0
+    source_coverage: dict[str, float]    # {"M1": 0.6, ...}
+```
+
+計算邏輯：
+- 單模組 coverage = sum(success weight) / sum(non-skipped weight)
+- confidence = sum(coverage × WEIGHTS[mid].weight) / sum(WEIGHTS[mid].weight)
+- `status` 門檻（`determine_status`）：所有 active core 失敗→error、任一 core 失敗→partial、只 aux 失敗→success
+
+**Y 案關鍵**：total 仍以 100 為分母，跨掃描可比；confidence 作為輔助指標（< 0.8 建議重跑）。
+
 ---
 
 #### Report 模組（cypulse/report/）

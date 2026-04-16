@@ -139,6 +139,9 @@ CyPulse 目標是以 100% 開源工具，建立完整的 EASM 資安曝險評級
 | **安全性** | subprocess 輸入消毒 | 防止命令注入 | 安全測試 |
 | **可擴充性** | 新增安全模組 | 實作 base class 即可 | 開發者文件驗證 |
 | **國際化** | 報告語言 | 繁體中文（zh-TW） | 人工驗證 |
+| **韌性** | 掃描中斷不毀檔 | Ctrl-C / OOM 後現有 JSON 仍可讀 | 原子寫檔（ADR-006）測試 |
+| **韌性** | 單一外部來源失敗不影響其他 | 其他來源仍可產出 finding | `test_shodan_fail_with_abuseipdb_key` 等 |
+| **透明性** | 信心分數可見於 score.json | `confidence` ≥ 0.8 視為可信，< 0.8 建議重跑 | 掃描實測 |
 
 ---
 
@@ -328,6 +331,11 @@ CyPulse 目標是以 100% 開源工具，建立完整的 EASM 資安曝險評級
       "M6_darkweb_credentials": 10,
       "M7_fake_domains": 3,
       "M8_cloud_exposure": 4
+    },
+    "confidence": 0.92,
+    "source_coverage": {
+      "M1": 1.0, "M2": 0.65, "M3": 1.0, "M4": 1.0,
+      "M5": 1.0, "M6": 1.0, "M7": 1.0, "M8": 1.0
     }
   },
   "findings_summary": {

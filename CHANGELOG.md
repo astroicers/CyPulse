@@ -4,6 +4,38 @@
 
 ---
 
+## [0.3.0] - 2026-04-17
+
+### Added
+
+- **原子寫檔** `cypulse/utils/io.py`（`safe_write_json` / `safe_write_text`）
+  - findings / assets / score / module_M*.json / report.html / CSV 全部採用
+  - Ctrl-C / OOM / 寫入失敗不再留下半寫檔案（避免下次 diff 載入 crash）
+- **來源狀態追蹤** `SourceStatus` 結構（見 [ADR-006](docs/adr/ADR-006-source-resilience-and-confidence.md)）
+  - M1 / M2 / M6 / M8 每個外部來源（Shodan / HIBP / nuclei / s3scanner 等）獨立追蹤狀態
+  - `ModuleResult.sources: list[SourceStatus]` 新欄位（default [] 相容舊資料）
+- **信心分數**（Y 案）
+  - `Score.confidence: float`（0.0~1.0）反映掃描整體覆蓋率
+  - `Score.source_coverage: dict[str, float]` 各模組來源成功率
+  - 總分仍以 100 為分母，跨掃描可比較；confidence 作為輔助指標
+- **嚴格 status 門檻** `cypulse/analysis/base.determine_status`
+  - 所有 active core 失敗 → `"error"`；任一 core 失敗 → `"partial"`；只 aux 失敗 → `"success"`
+  - skipped（無 API key / 工具未安裝）不計入失敗
+
+### Changed
+
+- M2 `_check_shodan/greynoise/abuseipdb/ipapi` 回傳型別由 `Finding | None` 改為 `tuple[Finding | None, str | None]`（附 error 資訊）
+- M6 `_check_hibp_public/credential_leaks/leakcheck` 同上
+- M1 `_run_nuclei/testssl` 結果由 `list[Finding] | None` 轉換為 `SourceStatus` 追蹤
+- `ScoreExplanation` 在 coverage < 1.0 時自動附加「部分來源未回應」info 訊息（deduction=0）
+
+### Fixed
+
+- 修復 M2 Shodan 失敗時其他來源產出的 finding 無法追溯「為何只有 2/4 來源」的不透明問題
+- 修復 HIBP timeout 靜默回傳 `[]` 與「真的沒外洩」無法區分的問題
+
+---
+
 ## [0.2.0] - 2026-04-17
 
 ### Added
