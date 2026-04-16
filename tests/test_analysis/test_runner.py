@@ -3,6 +3,7 @@ import json
 import tempfile
 from cypulse.analysis.runner import run_analysis, save_findings
 from cypulse.models import Asset, Assets
+from cypulse.scoring.weights import WEIGHTS
 
 
 class TestRunAnalysis:
@@ -25,9 +26,10 @@ class TestRunAnalysis:
         assets = self._make_assets()
         findings = run_analysis(assets)
         assert findings.domain == "example.com"
-        assert len(findings.modules) == 8
+        # 模組數必須與 WEIGHTS 定義一致（加 M9 時自動更新）
+        assert len(findings.modules) == len(WEIGHTS)
         for m in findings.modules:
-            assert m.module_id in ["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8"]
+            assert m.module_id in WEIGHTS
 
     def test_run_selected_modules(self):
         assets = self._make_assets()

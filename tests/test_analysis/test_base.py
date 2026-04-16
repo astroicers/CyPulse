@@ -58,3 +58,19 @@ def test_module_weight_matches_weights_py(module_cls):
         f"{mid}.max_score()={mod.max_score()} "
         f"與 WEIGHTS[{mid}].max_score={expected['max_score']} 不一致"
     )
+
+
+@pytest.mark.parametrize("module_cls", ALL_MODULES)
+def test_module_name_matches_weights_py(module_cls):
+    """每個模組的 module_name() 必須與 WEIGHTS[mid].name 完全一致。
+
+    未來若任一方改動名稱沒同步，會造成報告標題與 WEIGHTS 定義不符
+    （例如 dim-card 顯示 WEIGHTS["M6"].name，module 詳情顯示 module_name()）。
+    """
+    mod = module_cls()
+    mid = mod.module_id()
+    expected_name = WEIGHTS[mid]["name"]
+    assert mod.module_name() == expected_name, (
+        f"{mid}.module_name()={mod.module_name()!r} "
+        f"與 WEIGHTS[{mid}].name={expected_name!r} 不一致"
+    )
