@@ -28,11 +28,31 @@
 - M6 `_check_hibp_public/credential_leaks/leakcheck` 同上
 - M1 `_run_nuclei/testssl` 結果由 `list[Finding] | None` 轉換為 `SourceStatus` 追蹤
 - `ScoreExplanation` 在 coverage < 1.0 時自動附加「部分來源未回應」info 訊息（deduction=0）
+- **AnalysisModule `weight()` / `max_score()` 改為從 `WEIGHTS` 取預設值**（單一事實來源）
+  - 移除 8 個模組類別的手寫 `weight()` / `max_score()` override
+  - 消除 PDF 顯示 M7 「5/3」等模組代碼與 WEIGHTS 不同步的矛盾畫面
+- **ADR-002 標註 `Superseded by ADR-004 / ADR-005`**：
+  等級閾值改 A(90-100)/B(75-89)/C(60-74)/D(0-59)；
+  M5 10%→8%、M7 5%→3%、新增 M8 4%。ADR-002 保留為歷史決策紀錄
+- **CLI `scan --modules` 新增 module ID 驗證**：
+  未知模組（如 `M9`）立即 err + exit 1，不再靜默忽略
+- **`pyproject.toml` version** 0.1.0 → 0.3.0 對齊 CHANGELOG
 
 ### Fixed
 
 - 修復 M2 Shodan 失敗時其他來源產出的 finding 無法追溯「為何只有 2/4 來源」的不透明問題
 - 修復 HIBP timeout 靜默回傳 `[]` 與「真的沒外洩」無法區分的問題
+- 修復 PDF/HTML 報告 M7「偽冒域名偵測」顯示 `5/3` 的矛盾（模組代碼殘留舊權重）
+- 修復 CLI `scan --modules M9` 靜默忽略造成使用者誤以為 M9 有執行
+
+### Meta（單一事實來源守門）
+
+新增多道跨檔案一致性測試，未來漂移時 CI 會立刻攔下：
+- `test_module_weight_matches_weights_py` / `test_module_name_matches_weights_py`
+- `test_m1/m2/m6_source_defs_sum_to_one`（`_SOURCE_DEFS` 權重總和 == 1.0）
+- `test_pyproject_version_matches_latest_changelog`（version ↔ CHANGELOG 同步）
+- `test_grades_match_adr004`（GRADES ↔ ADR-004 閾值同步）
+- `test_scan_invalid_module_id_rejected`（CLI 拒絕未知 module ID）
 
 ---
 
