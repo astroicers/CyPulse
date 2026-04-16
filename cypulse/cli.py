@@ -54,7 +54,16 @@ def scan(ctx, domain: str, modules: str | None, output: str | None):
 
     module_ids = None
     if modules:
+        from cypulse.scoring.weights import WEIGHTS
         module_ids = [m.strip().upper() for m in modules.split(",")]
+        invalid = sorted(set(module_ids) - set(WEIGHTS.keys()))
+        if invalid:
+            click.echo(
+                f"Error: Unknown modules: {invalid}. "
+                f"Valid: {sorted(WEIGHTS.keys())}",
+                err=True,
+            )
+            sys.exit(1)
 
     click.echo(f"[CyPulse] 開始掃描 {domain}...")
 
