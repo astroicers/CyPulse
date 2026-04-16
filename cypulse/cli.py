@@ -37,7 +37,7 @@ def cli(ctx, log_level: str | None, config_path: str):
 
 @cli.command()
 @click.argument("domain")
-@click.option("--modules", "-m", default=None, help="Comma-separated module list (M1-M7)")
+@click.option("--modules", "-m", default=None, help="Comma-separated module list (M1-M8)")
 @click.option("--output", "-o", default=None, help="Output directory")
 @click.pass_context
 def scan(ctx, domain: str, modules: str | None, output: str | None):
@@ -117,8 +117,10 @@ def scan(ctx, domain: str, modules: str | None, output: str | None):
     # Summary
     total_findings = sum(len(m.findings) for m in findings.modules)
     click.echo("")
+    from cypulse.scoring.weights import WEIGHTS
     click.echo(f"[SCAN COMPLETE] domain={domain} score={score.total} grade={score.grade} "
-               f"duration={score.scan_duration:.0f}s modules={len(findings.modules)}/7 "
+               f"duration={score.scan_duration:.0f}s "
+               f"modules={len(findings.modules)}/{len(WEIGHTS)} "
                f"findings={total_findings}")
     click.echo(f"[CyPulse] 結果儲存於: {scan_dir}")
 

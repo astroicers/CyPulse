@@ -1,9 +1,16 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from cypulse.models import Assets, ModuleResult, SourceStatus
+from cypulse.scoring.weights import WEIGHTS
 
 
 class AnalysisModule(ABC):
+    """分析模組基底類別。
+
+    子類別必須實作 module_id()、module_name()、run()。
+    weight() 和 max_score() 預設從 WEIGHTS（scoring/weights.py）取值，
+    確保權重為單一事實來源；若子類別覆寫時必須手動維護同步。
+    """
 
     @abstractmethod
     def module_id(self) -> str:
@@ -13,13 +20,13 @@ class AnalysisModule(ABC):
     def module_name(self) -> str:
         ...
 
-    @abstractmethod
     def weight(self) -> float:
-        ...
+        """預設從 WEIGHTS 取，避免模組代碼與 weights.py 漂移。"""
+        return WEIGHTS[self.module_id()]["weight"]
 
-    @abstractmethod
     def max_score(self) -> int:
-        ...
+        """預設從 WEIGHTS 取，避免模組代碼與 weights.py 漂移。"""
+        return WEIGHTS[self.module_id()]["max_score"]
 
     @abstractmethod
     def run(self, assets: Assets) -> ModuleResult:

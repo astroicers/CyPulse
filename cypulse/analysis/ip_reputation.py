@@ -34,12 +34,6 @@ class IPReputationModule(AnalysisModule):
     def module_name(self) -> str:
         return "IP 信譽"
 
-    def weight(self) -> float:
-        return 0.15
-
-    def max_score(self) -> int:
-        return 15
-
     def run(self, assets: Assets) -> ModuleResult:
         import time
         start = time.time()

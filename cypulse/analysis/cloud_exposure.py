@@ -30,12 +30,6 @@ class CloudExposureModule(AnalysisModule):
     def module_name(self) -> str:
         return "雲端資產暴露"
 
-    def weight(self) -> float:
-        return 0.04
-
-    def max_score(self) -> int:
-        return 4
-
     def run(self, assets: Assets) -> ModuleResult:
         import time
         start = time.time()

@@ -54,6 +54,9 @@ htmlcov/
 coverage.xml
 .pytest_cache/
 
+# Claude harness
+.claude/scheduled_tasks.lock
+
 # CyPulse
 data/
 config/config.yaml

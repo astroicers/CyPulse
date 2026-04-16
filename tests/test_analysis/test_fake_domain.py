@@ -34,12 +34,12 @@ class TestFakeDomainModule:
     # ------------------------------------------------------------------
 
     def test_module_info(self):
-        """module_id、weight、max_score 應符合規格"""
+        """module_id、weight、max_score 應符合規格（ADR-005 調整為 0.03/3）"""
         m = FakeDomainModule()
         assert m.module_id() == "M7"
         assert m.module_name() == "偽冒域名偵測"
-        assert m.weight() == pytest.approx(0.05)
-        assert m.max_score() == 5
+        assert m.weight() == pytest.approx(0.03)
+        assert m.max_score() == 3
 
     # ------------------------------------------------------------------
     # dnstwist 無法使用（ImportError）→ score=0, status="error"
@@ -53,7 +53,7 @@ class TestFakeDomainModule:
 
         assert result.module_id == "M7"
         assert result.score == 0
-        assert result.max_score == 5
+        assert result.max_score == 3
         assert result.status == "error"
         # 應包含一筆 info finding 說明原因
         assert len(result.findings) == 1
@@ -76,15 +76,15 @@ class TestFakeDomainModule:
             result = m.run(sample_assets)
 
         assert result.status == "success"
-        assert result.score == 2          # 5 - 3 = 2
-        assert result.max_score == 5
+        assert result.score == 0          # max=3, 3 個扣 3 = 0
+        assert result.max_score == 3
         assert len(result.findings) == 3
         for finding in result.findings:
             assert finding.severity == "medium"
             assert finding.score_impact == 1
 
     def test_resolved_fake_domains_capped_at_five(self, sample_assets):
-        """超過 5 個已解析的偽冒域名，分數最低扣到 0，findings 也只取前 5 筆"""
+        """超過 5 個已解析的偽冒域名，findings 只取前 5 筆，score 下限為 0（max=3 時 3 個就到底）"""
         fake_data = [
             {"domain": f"exa{i}mple.com", "fuzzer": "replacement", "dns_a": [f"1.2.3.{i}"]}
             for i in range(8)
@@ -94,8 +94,8 @@ class TestFakeDomainModule:
             result = m.run(sample_assets)
 
         assert result.status == "success"
-        assert result.score == 0          # 5 - 5 = 0（上限）
-        assert len(result.findings) == 5  # 只處理前 5 筆
+        assert result.score == 0          # max=3，3 個就扣完
+        assert len(result.findings) == 5  # 仍只處理前 5 筆
 
     def test_resolved_via_dns_aaaa(self, sample_assets):
         """dns_aaaa 欄位也應視為已解析，納入偵測"""
@@ -106,16 +106,16 @@ class TestFakeDomainModule:
         with patch.object(FakeDomainModule, "_run_dnstwist", return_value=fake_data):
             result = m.run(sample_assets)
 
-        assert result.score == 4          # 5 - 1 = 4
+        assert result.score == 2          # max=3, 1 個扣 1 = 2
         assert len(result.findings) == 1
         assert result.findings[0].severity == "medium"
 
     # ------------------------------------------------------------------
-    # dnstwist 回傳但沒有任何已解析域名 → score=5
+    # dnstwist 回傳但沒有任何已解析域名 → score=max=3
     # ------------------------------------------------------------------
 
     def test_no_resolved_domains(self, sample_assets):
-        """dnstwist 回傳結果但全部未解析時，score 應為滿分 5，無 findings"""
+        """dnstwist 回傳結果但全部未解析時，score 應為滿分 3，無 findings"""
         fake_data = [
             {"domain": "examp1e.com", "fuzzer": "replacement"},           # 無 dns_a / dns_aaaa
             {"domain": "exarnple.com", "fuzzer": "replacement", "dns_a": []},  # 空串列
@@ -125,17 +125,17 @@ class TestFakeDomainModule:
             result = m.run(sample_assets)
 
         assert result.status == "success"
-        assert result.score == 5
+        assert result.score == 3
         assert result.findings == []
 
     def test_empty_dnstwist_result(self, sample_assets):
-        """dnstwist 回傳空清單時，score 應為滿分 5"""
+        """dnstwist 回傳空清單時，score 應為滿分 3"""
         m = FakeDomainModule()
         with patch.object(FakeDomainModule, "_run_dnstwist", return_value=[]):
             result = m.run(sample_assets)
 
         assert result.status == "success"
-        assert result.score == 5
+        assert result.score == 3
         assert result.findings == []
 
     # ------------------------------------------------------------------
@@ -217,7 +217,7 @@ class TestFakeDomainModule:
 
         assert result.module_id == "M7"
         assert result.module_name == "偽冒域名偵測"
-        assert result.max_score == 5
+        assert result.max_score == 3
         assert isinstance(result.execution_time, float)
         assert result.execution_time >= 0
         assert result.raw_data == {}

@@ -62,8 +62,9 @@ class TestEmailSecurityModule:
 
         m = EmailSecurityModule()
         assert m.module_id() == "M5"
-        assert m.weight() == pytest.approx(0.10)
-        assert m.max_score() == 10
+        # weight/max_score 從 WEIGHTS 取（ADR-005 調整為 0.08/8）
+        assert m.weight() == pytest.approx(0.08)
+        assert m.max_score() == 8
 
     def test_module_name(self):
         """module_name 應回傳非空字串。"""
@@ -87,7 +88,7 @@ class TestEmailSecurityModule:
 
         assert result.module_id == "M5"
         assert result.score == 0
-        assert result.max_score == 10
+        assert result.max_score == 8
         assert result.status == "error"
         # 應至少有一筆 finding 說明原因
         assert len(result.findings) >= 1
@@ -116,7 +117,7 @@ class TestEmailSecurityModule:
         with patch.dict(sys.modules, {"checkdmarc": mock_cd}):
             result = EmailSecurityModule().run(sample_assets)
 
-        assert result.score == 6
+        assert result.score == 4  # max_score 8 - SPF 扣 4
         assert result.status == "success"
 
         spf_findings = [f for f in result.findings if "SPF" in f.title]
@@ -161,7 +162,7 @@ class TestEmailSecurityModule:
         with patch.dict(sys.modules, {"checkdmarc": mock_cd}):
             result = EmailSecurityModule().run(sample_assets)
 
-        assert result.score == 4
+        assert result.score == 2  # max_score 8 - DMARC 扣 6
         assert result.status == "success"
 
         dmarc_findings = [f for f in result.findings if "DMARC" in f.title]
@@ -209,7 +210,7 @@ class TestEmailSecurityModule:
         with patch.dict(sys.modules, {"checkdmarc": mock_cd}):
             result = EmailSecurityModule().run(sample_assets)
 
-        assert result.score == 7
+        assert result.score == 5  # max_score 8 - policy=none 扣 3
         assert result.status == "success"
 
         policy_findings = [f for f in result.findings if "policy" in f.title.lower()]
@@ -242,7 +243,7 @@ class TestEmailSecurityModule:
     # ------------------------------------------------------------------
 
     def test_all_records_present(self, sample_assets):
-        """SPF 與 DMARC（policy 非 none）均存在 → score=10，無 findings。"""
+        """SPF 與 DMARC（policy 非 none）均存在 → score=max_score=8，無 findings。"""
         from cypulse.analysis.email_security import EmailSecurityModule
 
         check_domains_result = [
@@ -259,13 +260,13 @@ class TestEmailSecurityModule:
         with patch.dict(sys.modules, {"checkdmarc": mock_cd}):
             result = EmailSecurityModule().run(sample_assets)
 
-        assert result.score == 10
-        assert result.max_score == 10
+        assert result.score == 8
+        assert result.max_score == 8
         assert result.status == "success"
         assert result.findings == []
 
     def test_all_records_present_quarantine_policy(self, sample_assets):
-        """DMARC policy=quarantine 視為有效保護，score 不應被扣減。"""
+        """DMARC policy=quarantine 視為有效保護，score=max_score=8。"""
         from cypulse.analysis.email_security import EmailSecurityModule
 
         check_domains_result = [
@@ -282,7 +283,7 @@ class TestEmailSecurityModule:
         with patch.dict(sys.modules, {"checkdmarc": mock_cd}):
             result = EmailSecurityModule().run(sample_assets)
 
-        assert result.score == 10
+        assert result.score == 8
         assert result.status == "success"
 
     # ------------------------------------------------------------------
@@ -323,7 +324,7 @@ class TestEmailSecurityModule:
             result = EmailSecurityModule().run(sample_assets)
 
         assert result.score == 0
-        assert result.max_score == 10
+        assert result.max_score == 8
         assert result.status == "error"
         assert len(result.findings) >= 1
 

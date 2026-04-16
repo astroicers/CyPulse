@@ -1,5 +1,7 @@
 import pytest
 from cypulse.analysis.base import AnalysisModule
+from cypulse.analysis.runner import ALL_MODULES
+from cypulse.scoring.weights import WEIGHTS
 from cypulse.models import Assets, ModuleResult
 
 
@@ -36,3 +38,23 @@ def test_analysis_module_concrete_implementation():
     assert mod.module_name() == "測試模組"
     assert mod.weight() == 0.1
     assert mod.max_score() == 10
+
+
+@pytest.mark.parametrize("module_cls", ALL_MODULES)
+def test_module_weight_matches_weights_py(module_cls):
+    """每個模組的 weight() / max_score() 必須與 WEIGHTS（scoring/weights.py）同步。
+
+    過去 ADR-005 調整 M5(10→8)、M7(5→3) 與新增 M8(4) 時只改了 weights.py，
+    模組代碼殘留舊值，造成報告 HTML/PDF 顯示 5/3 等矛盾畫面。
+    """
+    mod = module_cls()
+    mid = mod.module_id()
+    assert mid in WEIGHTS, f"{mid} 未在 WEIGHTS 中定義"
+    expected = WEIGHTS[mid]
+    assert mod.weight() == expected["weight"], (
+        f"{mid}.weight()={mod.weight()} 與 WEIGHTS[{mid}].weight={expected['weight']} 不一致"
+    )
+    assert mod.max_score() == expected["max_score"], (
+        f"{mid}.max_score()={mod.max_score()} "
+        f"與 WEIGHTS[{mid}].max_score={expected['max_score']} 不一致"
+    )

@@ -13,12 +13,6 @@ class FakeDomainModule(AnalysisModule):
     def module_name(self) -> str:
         return "偽冒域名偵測"
 
-    def weight(self) -> float:
-        return 0.05
-
-    def max_score(self) -> int:
-        return 5
-
     def run(self, assets: Assets) -> ModuleResult:
         import time
         start = time.time()

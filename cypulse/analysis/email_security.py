@@ -13,12 +13,6 @@ class EmailSecurityModule(AnalysisModule):
     def module_name(self) -> str:
         return "郵件安全"
 
-    def weight(self) -> float:
-        return 0.10
-
-    def max_score(self) -> int:
-        return 10
-
     def run(self, assets: Assets) -> ModuleResult:
         import time
         start = time.time()
