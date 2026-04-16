@@ -1,5 +1,4 @@
 from __future__ import annotations
-import json
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import structlog
@@ -12,6 +11,7 @@ from cypulse.analysis.email_security import EmailSecurityModule
 from cypulse.analysis.darkweb import DarkWebModule
 from cypulse.analysis.fake_domain import FakeDomainModule
 from cypulse.analysis.cloud_exposure import CloudExposureModule
+from cypulse.utils.io import safe_write_json
 
 logger = structlog.get_logger()
 
@@ -84,18 +84,12 @@ def run_analysis(assets: Assets, module_ids: list[str] | None = None) -> Finding
 
 
 def save_findings(findings: Findings, scan_dir: str) -> None:
-    """Save findings to JSON files."""
-    os.makedirs(scan_dir, exist_ok=True)
-
-    # Save individual module results
+    """Save findings to JSON files (atomic write)."""
     for module_result in findings.modules:
         path = os.path.join(scan_dir, f"module_{module_result.module_id}.json")
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(module_result.to_dict(), f, ensure_ascii=False, indent=2)
+        safe_write_json(path, module_result.to_dict())
 
-    # Save combined findings
     path = os.path.join(scan_dir, "findings.json")
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(findings.to_dict(), f, ensure_ascii=False, indent=2)
+    safe_write_json(path, findings.to_dict())
 
     logger.info("findings_saved", scan_dir=scan_dir, modules=len(findings.modules))

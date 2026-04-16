@@ -1,9 +1,9 @@
 from __future__ import annotations
-import json
 import os
 import structlog
 from cypulse.models import Score, ScoreExplanation, Findings
 from cypulse.scoring.weights import WEIGHTS, get_grade
+from cypulse.utils.io import safe_write_json
 
 logger = structlog.get_logger()
 
@@ -68,8 +68,6 @@ class ScoringEngine:
 
 
 def save_score(score: Score, scan_dir: str) -> None:
-    os.makedirs(scan_dir, exist_ok=True)
     path = os.path.join(scan_dir, "score.json")
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(score.to_dict(), f, ensure_ascii=False, indent=2)
+    safe_write_json(path, score.to_dict())
     logger.info("score_saved", path=path)

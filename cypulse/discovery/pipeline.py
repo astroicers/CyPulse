@@ -1,6 +1,5 @@
 from __future__ import annotations
 import os
-import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 import structlog
@@ -11,6 +10,7 @@ from cypulse.discovery.dnsx import resolve_subdomains
 from cypulse.discovery.httpx_tool import HttpxTool
 from cypulse.discovery.naabu import NaabuTool
 from cypulse.discovery.web_sources import query_web_sources
+from cypulse.utils.io import safe_write_json
 
 logger = structlog.get_logger()
 
@@ -141,11 +141,9 @@ def run_discovery(domain: str, config: dict) -> Assets:
 
 
 def save_assets(assets: Assets, output_dir: str) -> str:
-    """Save assets to JSON file, return path."""
+    """Save assets to JSON file (atomic), return scan_dir."""
     scan_dir = os.path.join(output_dir, assets.domain, assets.timestamp)
-    os.makedirs(scan_dir, exist_ok=True)
     path = os.path.join(scan_dir, "assets.json")
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(assets.to_dict(), f, ensure_ascii=False, indent=2)
+    safe_write_json(path, assets.to_dict())
     logger.info("assets_saved", path=path)
     return scan_dir

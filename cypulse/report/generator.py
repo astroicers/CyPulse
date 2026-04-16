@@ -1,11 +1,13 @@
 from __future__ import annotations
 import csv
+import io
 import os
 import structlog
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from cypulse.models import Score, Findings, Assets
 from cypulse.scoring.weights import WEIGHTS
 from cypulse.remediation.playbooks import get_remediation
+from cypulse.utils.io import safe_write_text
 
 logger = structlog.get_logger()
 
@@ -44,8 +46,7 @@ class ReportGenerator:
         )
 
         path = os.path.join(output_dir, "report.html")
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(html)
+        safe_write_text(path, html)
 
         logger.info("html_report_generated", path=path)
         return path
@@ -66,47 +67,46 @@ class ReportGenerator:
 
     def generate_csv(self, findings: Findings,
                      assets: Assets, output_dir: str) -> list[str]:
-        os.makedirs(output_dir, exist_ok=True)
         paths = []
 
-        # Assets CSV
-        assets_path = os.path.join(output_dir, "assets.csv")
-        with open(assets_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
+        assets_buf = io.StringIO()
+        writer = csv.writer(assets_buf)
+        writer.writerow([
+            "subdomain", "ip", "ports",
+            "http_status", "http_title", "tls_version",
+        ])
+        for asset in assets.subdomains:
             writer.writerow([
-                "subdomain", "ip", "ports",
-                "http_status", "http_title", "tls_version",
+                asset.subdomain,
+                asset.ip or "",
+                ";".join(str(p) for p in asset.ports),
+                asset.http_status or "",
+                asset.http_title or "",
+                asset.tls_version or "",
             ])
-            for asset in assets.subdomains:
-                writer.writerow([
-                    asset.subdomain,
-                    asset.ip or "",
-                    ";".join(str(p) for p in asset.ports),
-                    asset.http_status or "",
-                    asset.http_title or "",
-                    asset.tls_version or "",
-                ])
+        assets_path = os.path.join(output_dir, "assets.csv")
+        safe_write_text(assets_path, assets_buf.getvalue())
         paths.append(assets_path)
 
-        # Findings CSV
+        findings_buf = io.StringIO()
+        writer = csv.writer(findings_buf)
+        writer.writerow([
+            "module_id", "module_name", "severity",
+            "title", "description", "evidence", "score_impact",
+        ])
+        for module in findings.modules:
+            for finding in module.findings:
+                writer.writerow([
+                    module.module_id,
+                    module.module_name,
+                    finding.severity,
+                    finding.title,
+                    finding.description,
+                    finding.evidence or "",
+                    finding.score_impact,
+                ])
         findings_path = os.path.join(output_dir, "findings.csv")
-        with open(findings_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                "module_id", "module_name", "severity",
-                "title", "description", "evidence", "score_impact",
-            ])
-            for module in findings.modules:
-                for finding in module.findings:
-                    writer.writerow([
-                        module.module_id,
-                        module.module_name,
-                        finding.severity,
-                        finding.title,
-                        finding.description,
-                        finding.evidence or "",
-                        finding.score_impact,
-                    ])
+        safe_write_text(findings_path, findings_buf.getvalue())
         paths.append(findings_path)
 
         logger.info("csv_reports_generated", paths=paths)
