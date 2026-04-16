@@ -16,6 +16,11 @@ class Score:
     dimensions: dict[str, int] = field(default_factory=dict)
     explanations: list[ScoreExplanation] = field(default_factory=list)
     scan_duration: float = 0.0
+    # 信心分數：0.0~1.0，反映資料來源覆蓋率（見 ADR-006）
+    # 1.0 = 所有來源都成功；< 0.8 建議重跑
+    confidence: float = 1.0
+    # 各模組來源覆蓋率 {"M1": 0.6, "M2": 1.0, ...}
+    source_coverage: dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         import dataclasses
