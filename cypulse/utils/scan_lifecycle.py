@@ -69,3 +69,43 @@ class ScanContext:
             except OSError:
                 pass  # 已被刪除或無權限，無視
         self._temp_files.clear()
+
+
+# Module-level 「目前活躍的 ScanContext」，供 SIGINT handler / 跨層 temp 檔註冊存取。
+_active_context: ScanContext | None = None
+
+
+def set_active_scan_context(ctx: ScanContext | None) -> None:
+    """設定/清除目前活躍的 ScanContext。CLI scan 開始時設定，結束時清除。"""
+    global _active_context
+    _active_context = ctx
+
+
+def get_active_scan_context() -> ScanContext | None:
+    """取得目前活躍的 ScanContext；若無則回 None。
+
+    供 web_security/cloud_exposure 等跨層模組註冊 temp 檔使用。
+    """
+    return _active_context
+
+
+def install_sigint_handler(ctx: ScanContext):
+    """安裝 SIGINT handler，回傳 handler 函式（便於測試直接呼叫）。
+
+    第一次 SIGINT：abort + cleanup_temp_files，讓主流程的 ScanAborted try/except 接手
+    第二次 SIGINT：raise KeyboardInterrupt 強制退出（避免 cleanup 卡住）
+    """
+    import signal as _signal
+    state = {"first_call": True}
+
+    def _handler(signum, frame):
+        if state["first_call"]:
+            state["first_call"] = False
+            ctx.abort(reason="user_interrupt (SIGINT)")
+            ctx.cleanup_temp_files()
+        else:
+            # 第二次：強制離開
+            raise KeyboardInterrupt("Forced exit on second SIGINT")
+
+    _signal.signal(_signal.SIGINT, _handler)
+    return _handler

@@ -59,8 +59,13 @@ def scan(ctx, domain: str, modules: str | None, output: str | None, timeout: int
     # Lifecycle 設定：CLI > config > 預設 1800s
     if timeout is None:
         timeout = scan_config.get("timeout_seconds", 1800)
-    from cypulse.utils.scan_lifecycle import ScanContext, ScanAborted
+    from cypulse.utils.scan_lifecycle import (
+        ScanContext, ScanAborted,
+        set_active_scan_context, install_sigint_handler,
+    )
     scan_ctx = ScanContext(timeout_seconds=timeout)
+    set_active_scan_context(scan_ctx)
+    install_sigint_handler(scan_ctx)  # 第一次 Ctrl-C → cleanup + abort
 
     # SIGALRM handler（Unix；Docker base = Linux 已涵蓋）
     import signal
@@ -105,6 +110,7 @@ def scan(ctx, domain: str, modules: str | None, output: str | None, timeout: int
         # 確保 alarm 取消（成功完成時）
         if hasattr(signal, "SIGALRM"):
             signal.alarm(0)
+        set_active_scan_context(None)
 
 
 def _execute_scan(

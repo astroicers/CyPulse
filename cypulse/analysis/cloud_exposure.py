@@ -60,6 +60,10 @@ class CloudExposureModule(AnalysisModule):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write("\n".join(bucket_names))
             tmpfile = f.name
+        from cypulse.utils.scan_lifecycle import get_active_scan_context
+        _ctx = get_active_scan_context()
+        if _ctx is not None:
+            _ctx.register_temp_file(tmpfile)
 
         result = None
         s3_error: str | None = None

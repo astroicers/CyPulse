@@ -195,9 +195,14 @@ class WebSecurityModule(AnalysisModule):
             import subprocess as sp
             import tempfile
             import os
+            from cypulse.utils.scan_lifecycle import get_active_scan_context
             with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
                 f.write("\n".join(live_hosts))
                 hosts_file = f.name
+            # 註冊到 ScanContext，SIGINT/timeout 時會被 cleanup
+            _ctx = get_active_scan_context()
+            if _ctx is not None:
+                _ctx.register_temp_file(hosts_file)
             try:
                 nuclei_cmd = [
                     "nuclei", "-l", hosts_file, "-json", "-silent",

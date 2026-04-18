@@ -89,3 +89,68 @@ class TestScanContext:
     def test_remaining_seconds_no_timeout(self):
         ctx = ScanContext(timeout_seconds=0)
         assert ctx.remaining_seconds() is None
+
+
+class TestActiveScanContext:
+    """Task P：以 module-level 全域引用支援 SIGINT handler 跨層存取。
+
+    SIGINT handler 由 cli.py 註冊在 process 層，但要能 cleanup 由
+    web_security/cloud_exposure 註冊到 ScanContext 的 temp 檔，
+    需有「目前活躍的 ScanContext」可被存取。
+    """
+
+    def test_set_active_scan_context(self):
+        from cypulse.utils.scan_lifecycle import (
+            set_active_scan_context, get_active_scan_context,
+        )
+        ctx = ScanContext()
+        set_active_scan_context(ctx)
+        assert get_active_scan_context() is ctx
+
+    def test_clear_active_scan_context(self):
+        from cypulse.utils.scan_lifecycle import (
+            set_active_scan_context, get_active_scan_context,
+        )
+        set_active_scan_context(ScanContext())
+        set_active_scan_context(None)
+        assert get_active_scan_context() is None
+
+    def test_get_active_returns_none_when_unset(self):
+        from cypulse.utils.scan_lifecycle import (
+            set_active_scan_context, get_active_scan_context,
+        )
+        set_active_scan_context(None)  # reset
+        assert get_active_scan_context() is None
+
+
+class TestSigintHandler:
+    """Task P：模擬 SIGINT 觸發時的副作用驗證。
+
+    不真的 raise SIGINT（測試環境會殺 pytest），改直接呼叫 handler 函式。
+    """
+
+    def test_sigint_handler_aborts_and_cleans(self):
+        """install_sigint_handler 安裝後，呼叫 handler 應 abort + cleanup。"""
+        from cypulse.utils.scan_lifecycle import install_sigint_handler
+        ctx = ScanContext()
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            tmp_path = f.name
+        ctx.register_temp_file(tmp_path)
+
+        handler = install_sigint_handler(ctx)
+        # 模擬 SIGINT 觸發
+        handler(2, None)  # signum=SIGINT, frame=None
+
+        assert ctx.aborted is True
+        assert "user_interrupt" in (ctx.abort_reason or "")
+        assert not os.path.exists(tmp_path), "SIGINT 後 temp 檔應被清理"
+
+    def test_double_sigint_force_exit(self):
+        """連按兩次 Ctrl-C 應觸發 force exit（避免 cleanup 卡住）。"""
+        from cypulse.utils.scan_lifecycle import install_sigint_handler
+        ctx = ScanContext()
+        handler = install_sigint_handler(ctx)
+        handler(2, None)  # 第一次：cleanup
+        # 第二次：直接 raise KeyboardInterrupt 強制退出
+        with pytest.raises(KeyboardInterrupt):
+            handler(2, None)
