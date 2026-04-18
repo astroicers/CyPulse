@@ -106,6 +106,14 @@ def scan(ctx, domain: str, modules: str | None, output: str | None, timeout: int
             signal.alarm(0)
         # SIGINT → 130, SIGALRM/timeout → 124
         sys.exit(124 if "timeout" in (scan_ctx.abort_reason or "") else 130)
+    except Exception as e:
+        # 未預期錯誤：用 diagnostics 給可行動的修復建議
+        from cypulse.utils.diagnostics import format_error
+        click.echo(f"\n[CyPulse] 掃描失敗：\n{format_error(e)}", err=True)
+        scan_ctx.cleanup_temp_files()
+        if hasattr(signal, "SIGALRM"):
+            signal.alarm(0)
+        sys.exit(1)
     finally:
         # 確保 alarm 取消（成功完成時）
         if hasattr(signal, "SIGALRM"):
