@@ -4,6 +4,52 @@
 
 ---
 
+## [0.4.0] - 2026-04-18
+
+主軸：**實際掃描體驗的可用性 + 韌性強化**（見 [ADR-007](docs/adr/ADR-007-scan-lifecycle-and-progress.md)）。
+
+### Added
+
+- **CLI 進度條 + ETA**：`cypulse scan` 期間 Phase 1（5 sub-steps）與 Phase 2（N modules）
+  以 `click.progressbar` 顯示即時進度與剩餘時間估計；每個 phase 結尾印實際耗時
+- **HTML 報告呈現信心分數**：
+  - score-card 加「掃描信心：92%」徽章（< 0.8 改紅色 + 重跑提示）
+  - 八維度評分卡顯示「來源覆蓋 X%」（< 100% 時）
+  - 新增「掃描覆蓋警示」區塊（僅當有 failed sources 時顯示，列出失效來源與錯誤原因）
+- **掃描全局 timeout** `--timeout INTEGER`（預設 1800s）：
+  超時 → 自動 cleanup temp 檔、abort scan、exit code 124（GNU timeout 慣例）
+- **Ctrl-C graceful shutdown**：
+  - 第一次 SIGINT → cleanup temp 檔 + abort + exit 130
+  - 第二次 SIGINT → 強制 KeyboardInterrupt（避免 cleanup 卡住）
+- **ScanContext** 中央 lifecycle 狀態（`cypulse/utils/scan_lifecycle.py`）：
+  abort flag、temp files registry、deadline；module-level active context
+  讓跨層模組（web_security/cloud_exposure）可註冊 temp 檔
+- **`runner.run_analysis(..., on_module_done)`** / **`pipeline.run_discovery(..., on_step_done)`**
+  callback 參數（向後相容預設 None），支援進度條
+- **SIT 端到端整合測試**（`tests/sit/`）：
+  - SIT-1 完整 scan flow（mock subprocess + HTTP，驗證 8 模組產出 + HTML 視覺化）
+  - SIT-2 兩次 scan + diff + atomic write 韌性
+  - SIT-3 timeout（exit 124）+ SIGINT（exit 130）端到端
+  - 預設 `make test` 不跑（`-m 'not sit'`）；`make test-sit` 單獨執行
+
+### Changed
+
+- `cypulse/cli.py` scan 主流程抽出 `_execute_scan()`，外層 `try/except ScanAborted` 包裹
+- `cypulse/analysis/web_security.py:_run_nuclei` 與 `cypulse/analysis/cloud_exposure.py:run`
+  改在建立 tempfile 後立即 `register_temp_file()`，正常完成走 `os.unlink`，
+  異常中斷走 `ctx.cleanup_temp_files`（雙重保險）
+- `pyproject.toml`：新增 `[tool.pytest.ini_options].markers` 與 `addopts -m 'not sit'`
+- `Makefile`：新增 `make test-sit` target
+
+### Meta（守門測試擴充）
+
+- 既有 308 → **331 unit tests pass + 7 SIT pass**（合計 +30）
+- ScanContext 16 筆 unit（含 SIGINT handler、active context、cleanup tolerance）
+- callback 機制 4 筆 unit（runner + pipeline）
+- HTML 視覺化 3 筆 unit（confidence badge / low warning / failed sources）
+
+---
+
 ## [0.3.0] - 2026-04-17
 
 ### Added
