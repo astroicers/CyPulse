@@ -38,7 +38,11 @@ include = ["cypulse*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-v --tb=short"
+# 預設 -m "not sit" 排除較慢的端到端測試；用 `make test-sit` 或 `pytest -m sit` 單獨跑
+addopts = "-v --tb=short -m 'not sit'"
+markers = [
+    "sit: System Integration Test（端到端測試，較慢，預設 make test 不跑）",
+]
 
 [tool.black]
 line-length = 100
