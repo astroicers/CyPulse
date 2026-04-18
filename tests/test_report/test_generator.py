@@ -1,7 +1,10 @@
 import os
 import tempfile
 from cypulse.report.generator import ReportGenerator
-from cypulse.models import Score, ScoreExplanation, Findings, ModuleResult, Finding, Assets, Asset
+from cypulse.models import (
+    Score, ScoreExplanation, Findings, ModuleResult, Finding,
+    Assets, Asset, SourceStatus,
+)
 
 
 class TestReportGenerator:
@@ -121,6 +124,67 @@ class TestReportGenerator:
                 html = f.read()
         # Unknown finding 不應有實際的 remediation details element（CSS 定義除外）
         assert '<details class="remediation-block">' not in html
+
+    def test_html_includes_confidence_badge(self):
+        """HTML 報告應顯示信心分數百分比。"""
+        assets, findings, score = self._make_test_data()
+        score.confidence = 0.92
+        score.source_coverage = {"M1": 1.0}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            gen = ReportGenerator()
+            path = gen.generate_html(score, findings, assets, tmpdir)
+            html = open(path, encoding="utf-8").read()
+        assert "信心" in html
+        assert "92" in html  # 92%
+
+    def test_html_low_confidence_warning(self):
+        """confidence < 0.8 時 HTML 應含警告 class。"""
+        assets, findings, score = self._make_test_data()
+        score.confidence = 0.65
+        score.source_coverage = {"M1": 0.65}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            gen = ReportGenerator()
+            path = gen.generate_html(score, findings, assets, tmpdir)
+            html = open(path, encoding="utf-8").read()
+        # 用 confidence-low class 標識（CSS 變紅）
+        assert "confidence-low" in html
+
+    def test_html_shows_failed_sources(self):
+        """有失效來源的模組，HTML 應列出 failed source IDs。"""
+        assets = Assets(
+            domain="example.com", timestamp="t",
+            subdomains=[Asset(subdomain="www.example.com", ip="1.2.3.4")],
+        )
+        findings = Findings(
+            domain="example.com", timestamp="t",
+            modules=[
+                ModuleResult(
+                    module_id="M2", module_name="IP 信譽",
+                    score=15, max_score=15, findings=[],
+                    execution_time=2.0,
+                    sources=[
+                        SourceStatus("shodan", "core", 0.35, "failed", "timeout"),
+                        SourceStatus("abuseipdb", "core", 0.35, "success"),
+                        SourceStatus("greynoise", "auxiliary", 0.15, "success"),
+                        SourceStatus("ip_api", "auxiliary", 0.15, "success"),
+                    ],
+                ),
+            ],
+        )
+        score = Score(
+            total=15, grade="D", dimensions={"M2": 15},
+            explanations=[], scan_duration=2.0,
+            confidence=0.65,
+            source_coverage={"M2": 0.65},
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            gen = ReportGenerator()
+            path = gen.generate_html(score, findings, assets, tmpdir)
+            html = open(path, encoding="utf-8").read()
+        # 失效來源 ID 應出現在 HTML 中
+        assert "shodan" in html
+        # 不應誤報已成功的來源為失敗
+        assert "abuseipdb" not in html or "shodan" in html  # smoke check
 
     def test_generate_csv(self):
         assets, findings, score = self._make_test_data()

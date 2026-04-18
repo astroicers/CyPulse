@@ -69,6 +69,16 @@
         .alert-partial { background: #fffff0; border: 1px solid #fefcbf; color: #975a16; }
         .alert-pass { background: #f0fff4; border: 1px solid #c6f6d5; color: #276749; }
 
+        .confidence-badge { display: inline-block; padding: 0.4rem 1rem; border-radius: 20px; font-size: 0.95rem; font-weight: 600; margin-top: 0.75rem; background: rgba(255,255,255,0.25); color: white; }
+        .confidence-low { background: rgba(245, 101, 101, 0.45) !important; }
+        .confidence-note { font-size: 0.85rem; color: #f6e05e; margin-top: 0.4rem; }
+
+        .coverage-section { margin: 1.5rem 0; padding: 1rem 1.25rem; background: #fffaf0; border-left: 4px solid #ed8936; border-radius: 4px; }
+        .coverage-section h3 { color: #c05621; margin-top: 0; }
+        .coverage-row { padding: 0.4rem 0; border-bottom: 1px dashed #fbd38d; font-size: 0.9rem; }
+        .coverage-row:last-child { border-bottom: 0; }
+        .failed-source { font-family: monospace; background: #fed7d7; color: #c53030; padding: 1px 6px; border-radius: 3px; margin: 0 0.2rem; }
+
         @media print {
             body { padding: 1rem; }
             .module-section { break-inside: avoid; }
@@ -87,6 +97,14 @@
         <div class="total">{{ score.total }}</div>
         <div class="grade grade-{{ score.grade }}">{{ score.grade }}</div>
         <div>掃描耗時：{{ "%.0f"|format(score.scan_duration) }} 秒</div>
+        {% set conf_pct = (score.confidence * 100) | round(0) | int %}
+        {% set conf_class = "confidence-low" if score.confidence < 0.8 else "" %}
+        <div class="confidence-badge {{ conf_class }}">
+            掃描信心：{{ conf_pct }}%
+        </div>
+        {% if score.confidence < 0.8 %}
+        <div class="confidence-note">⚠️ 信心 &lt; 80%，部分資料來源未回應，建議重跑掃描</div>
+        {% endif %}
     </div>
 
     <!-- Dimensions Overview -->
@@ -100,9 +118,39 @@
                 {% set pct = (score.dimensions.get(mid, 0) / info.max_score * 100) if info.max_score > 0 else 0 %}
                 <div class="dim-fill" style="width: {{ pct }}%; background: {% if pct >= 80 %}#48bb78{% elif pct >= 60 %}#ed8936{% else %}#f56565{% endif %};"></div>
             </div>
+            {% set cov = score.source_coverage.get(mid, 1.0) if score.source_coverage else 1.0 %}
+            {% if cov < 1.0 %}
+            <div style="font-size: 0.75rem; color: #c05621; margin-top: 0.3rem;">
+                來源覆蓋 {{ (cov * 100) | round(0) | int }}%
+            </div>
+            {% endif %}
         </div>
         {% endfor %}
     </div>
+
+    <!-- Source Coverage（僅當有失效來源時顯示） -->
+    {% set failed_sources_by_module = {} %}
+    {% for module in findings.modules %}
+        {% set failed = module.sources | selectattr("status", "equalto", "failed") | list %}
+        {% if failed %}
+            {% set _ = failed_sources_by_module.update({module.module_id: failed}) %}
+        {% endif %}
+    {% endfor %}
+    {% if failed_sources_by_module %}
+    <div class="coverage-section">
+        <h3>掃描覆蓋警示</h3>
+        <p style="font-size: 0.85rem; color: #744210;">以下來源未成功回應，相關模組的分數可能不完整：</p>
+        {% for mid, failed in failed_sources_by_module.items() %}
+        <div class="coverage-row">
+            <strong>{{ mid }} {{ weights[mid].name if mid in weights else "" }}</strong>：
+            {% for src in failed %}
+            <span class="failed-source">{{ src.source_id }}</span>
+            {% if src.error %}<span style="font-size: 0.8rem; color: #718096;">({{ src.error }})</span>{% endif %}
+            {% endfor %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
 
     <!-- Assets Summary -->
     <h2>資產概覽</h2>
