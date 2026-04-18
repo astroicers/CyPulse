@@ -2,6 +2,7 @@ from __future__ import annotations
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
+from typing import Callable
 import structlog
 from cypulse.models import Asset, Assets
 from cypulse.discovery.subfinder import SubfinderTool
@@ -15,9 +16,26 @@ from cypulse.utils.io import safe_write_json
 logger = structlog.get_logger()
 
 
-def run_discovery(domain: str, config: dict) -> Assets:
-    """Execute the full asset discovery pipeline."""
+def run_discovery(
+    domain: str,
+    config: dict,
+    on_step_done: Callable[[str], None] | None = None,
+) -> Assets:
+    """Execute the full asset discovery pipeline.
+
+    Args:
+        on_step_done: 每完成一個 step 呼叫，傳入 step 名稱
+            （subdomain_enum / web_sources / dns_resolution / port_scan / http_probing）
+    """
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M%S")
+
+    def _notify(step: str) -> None:
+        if on_step_done is None:
+            return
+        try:
+            on_step_done(step)
+        except Exception as e:
+            logger.warning("on_step_done_callback_failed", step=step, error=str(e))
 
     # Step 1: Subdomain enumeration (subfinder + amass)
     logger.info("discovery_step", step="subdomain_enumeration")
@@ -47,6 +65,7 @@ def run_discovery(domain: str, config: dict) -> Assets:
         if sub and sub not in seen:
             seen.add(sub)
             all_subdomains.append(sub)
+    _notify("subdomain_enum")
 
     # Step 1b: Web API fallback sources (free, no tools needed)
     logger.info("discovery_step", step="web_api_sources")
@@ -69,6 +88,7 @@ def run_discovery(domain: str, config: dict) -> Assets:
         tool_count=sum(len(r) for r in tool_results),
         web_count=web_count,
     )
+    _notify("web_sources")
 
     # Step 2: DNS resolution (dnsx)
     logger.info("discovery_step", step="dns_resolution")
@@ -79,6 +99,7 @@ def run_discovery(domain: str, config: dict) -> Assets:
     for r in dns_results:
         sub = r.get("subdomain", "").lower()
         dns_map[sub] = r.get("ip")
+    _notify("dns_resolution")
 
     # Step 3: Port scan (naabu)
     logger.info("discovery_step", step="port_scan")
@@ -94,6 +115,7 @@ def run_discovery(domain: str, config: dict) -> Assets:
         port = r.get("port")
         if host and port:
             port_map.setdefault(host, set()).add(port)
+    _notify("port_scan")
 
     # Step 4: HTTP probing (httpx)
     logger.info("discovery_step", step="http_probing")
@@ -107,6 +129,7 @@ def run_discovery(domain: str, config: dict) -> Assets:
         sub = r.get("subdomain", "").lower()
         if sub:
             http_map[sub] = r
+    _notify("http_probing")
 
     # Step 5: Assemble Assets
     assets_list: list[Asset] = []

@@ -1,6 +1,7 @@
 from __future__ import annotations
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Callable
 import structlog
 from cypulse.models import Assets, Findings, ModuleResult
 from cypulse.analysis.web_security import WebSecurityModule
@@ -55,8 +56,16 @@ def _run_single_module(module, assets: Assets) -> ModuleResult:
         )
 
 
-def run_analysis(assets: Assets, module_ids: list[str] | None = None) -> Findings:
-    """Run all (or selected) analysis modules in parallel."""
+def run_analysis(
+    assets: Assets,
+    module_ids: list[str] | None = None,
+    on_module_done: Callable[[str], None] | None = None,
+) -> Findings:
+    """Run all (or selected) analysis modules in parallel.
+
+    Args:
+        on_module_done: 每個模組完成時呼叫，傳入 module_id（用於進度條）
+    """
     modules = []
     for module_cls in ALL_MODULES:
         module = module_cls()
@@ -71,7 +80,13 @@ def run_analysis(assets: Assets, module_ids: list[str] | None = None) -> Finding
             for m in modules
         }
         for future in as_completed(future_to_module):
-            results.append(future.result())
+            result = future.result()
+            results.append(result)
+            if on_module_done is not None:
+                try:
+                    on_module_done(result.module_id)
+                except Exception as e:
+                    logger.warning("on_module_done_callback_failed", error=str(e))
 
     # 按 module_id 排序確保輸出一致
     results.sort(key=lambda r: r.module_id)

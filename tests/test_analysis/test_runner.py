@@ -46,3 +46,27 @@ class TestRunAnalysis:
             with open(os.path.join(tmpdir, "findings.json")) as f:
                 data = json.load(f)
             assert data["domain"] == "example.com"
+
+    def test_on_module_done_callback_invoked(self):
+        """每個模組完成時應呼叫 on_module_done callback 一次（用於進度條）。"""
+        assets = self._make_assets()
+        called_modules = []
+
+        def callback(module_id: str):
+            called_modules.append(module_id)
+
+        findings = run_analysis(
+            assets,
+            module_ids=["M1", "M3", "M7"],
+            on_module_done=callback,
+        )
+
+        assert len(findings.modules) == 3
+        # 每模組剛好觸發一次 callback
+        assert sorted(called_modules) == ["M1", "M3", "M7"]
+
+    def test_on_module_done_callback_optional(self):
+        """on_module_done=None（預設）時不應拋例外。"""
+        assets = self._make_assets()
+        findings = run_analysis(assets, module_ids=["M1"], on_module_done=None)
+        assert len(findings.modules) == 1

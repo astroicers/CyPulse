@@ -71,6 +71,57 @@ class TestRunDiscovery:
         subs = [a.subdomain for a in assets.subdomains]
         assert len(subs) == len(set(subs))
 
+    @patch("cypulse.discovery.pipeline.HttpxTool")
+    @patch("cypulse.discovery.pipeline.NaabuTool")
+    @patch("cypulse.discovery.pipeline.resolve_subdomains")
+    @patch("cypulse.discovery.pipeline.query_web_sources")
+    @patch("cypulse.discovery.pipeline.AmassTool")
+    @patch("cypulse.discovery.pipeline.SubfinderTool")
+    def test_on_step_done_callback_invoked(
+        self, MockSF, MockAmass, mock_web, mock_resolve, MockNaabu, MockHttpx
+    ):
+        """每個 phase 步驟完成時應呼叫 on_step_done callback（用於進度條）。"""
+        MockSF.return_value.run.return_value = []
+        MockAmass.return_value.run.return_value = []
+        mock_web.return_value = []
+        mock_resolve.return_value = []
+        MockNaabu.return_value.run.return_value = []
+        MockHttpx.return_value.run.return_value = []
+
+        called_steps = []
+        run_discovery(
+            "example.com", {},
+            on_step_done=lambda step: called_steps.append(step),
+        )
+
+        # 驗證 5 個 step 各觸發一次（順序固定）
+        assert called_steps == [
+            "subdomain_enum",
+            "web_sources",
+            "dns_resolution",
+            "port_scan",
+            "http_probing",
+        ]
+
+    @patch("cypulse.discovery.pipeline.HttpxTool")
+    @patch("cypulse.discovery.pipeline.NaabuTool")
+    @patch("cypulse.discovery.pipeline.resolve_subdomains")
+    @patch("cypulse.discovery.pipeline.query_web_sources")
+    @patch("cypulse.discovery.pipeline.AmassTool")
+    @patch("cypulse.discovery.pipeline.SubfinderTool")
+    def test_on_step_done_callback_optional(
+        self, MockSF, MockAmass, mock_web, mock_resolve, MockNaabu, MockHttpx
+    ):
+        """on_step_done=None 時不應拋例外（向後相容）。"""
+        MockSF.return_value.run.return_value = []
+        MockAmass.return_value.run.return_value = []
+        mock_web.return_value = []
+        mock_resolve.return_value = []
+        MockNaabu.return_value.run.return_value = []
+        MockHttpx.return_value.run.return_value = []
+        # 省略 on_step_done 參數
+        run_discovery("example.com", {})
+
 
 class TestPipelineFaultTolerance:
     @patch("cypulse.discovery.pipeline.HttpxTool")

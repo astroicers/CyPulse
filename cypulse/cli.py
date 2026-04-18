@@ -66,23 +66,51 @@ def scan(ctx, domain: str, modules: str | None, output: str | None):
             sys.exit(1)
 
     click.echo(f"[CyPulse] 開始掃描 {domain}...")
+    import time as _time
 
-    # Phase 1: Discovery
-    click.echo("[CyPulse] Phase 1: 資產探勘...")
+    # Phase 1: Discovery（5 個 sub-steps）
     from cypulse.discovery.pipeline import run_discovery, save_assets
-    assets = run_discovery(domain, scan_config)
+    phase1_start = _time.time()
+    discovery_steps = [
+        "subdomain_enum", "web_sources", "dns_resolution",
+        "port_scan", "http_probing",
+    ]
+    with click.progressbar(
+        length=len(discovery_steps),
+        label="[CyPulse] Phase 1: 資產探勘",
+        show_eta=True,
+    ) as bar:
+        assets = run_discovery(
+            domain, scan_config,
+            on_step_done=lambda step: bar.update(1, current_item=step),
+        )
     scan_dir = save_assets(assets, output_dir)
     click.echo(
         f"[CyPulse]   子網域: {assets.total_subdomains}, "
-        f"存活: {assets.total_live}, HTTP: {assets.total_http}"
+        f"存活: {assets.total_live}, HTTP: {assets.total_http} "
+        f"（耗時 {_time.time() - phase1_start:.0f}s）"
     )
 
-    # Phase 2: Analysis
-    click.echo("[CyPulse] Phase 2: 風險分析...")
-    from cypulse.analysis.runner import run_analysis, save_findings
-    findings = run_analysis(assets, module_ids)
+    # Phase 2: Analysis（每模組推進進度）
+    from cypulse.analysis.runner import run_analysis, save_findings, ALL_MODULES
+    phase2_start = _time.time()
+    selected_count = (
+        len(module_ids) if module_ids else len(ALL_MODULES)
+    )
+    with click.progressbar(
+        length=selected_count,
+        label="[CyPulse] Phase 2: 風險分析",
+        show_eta=True,
+    ) as bar:
+        findings = run_analysis(
+            assets, module_ids,
+            on_module_done=lambda mid: bar.update(1, current_item=mid),
+        )
     save_findings(findings, scan_dir)
-    click.echo(f"[CyPulse]   完成 {len(findings.modules)} 個模組分析")
+    click.echo(
+        f"[CyPulse]   完成 {len(findings.modules)} 個模組分析 "
+        f"（耗時 {_time.time() - phase2_start:.0f}s）"
+    )
 
     # Phase 3: Scoring
     click.echo("[CyPulse] Phase 3: 評分...")
