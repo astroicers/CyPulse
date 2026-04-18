@@ -39,8 +39,12 @@ def cli(ctx, log_level: str | None, config_path: str):
 @click.argument("domain")
 @click.option("--modules", "-m", default=None, help="Comma-separated module list (M1-M8)")
 @click.option("--output", "-o", default=None, help="Output directory")
+@click.option(
+    "--timeout", default=None, type=int,
+    help="掃描全局 timeout（秒）；0 = 無 timeout（預設 1800）",
+)
 @click.pass_context
-def scan(ctx, domain: str, modules: str | None, output: str | None):
+def scan(ctx, domain: str, modules: str | None, output: str | None, timeout: int | None):
     """對目標 domain 執行完整掃描"""
     try:
         domain = sanitize_domain(domain)
@@ -51,6 +55,22 @@ def scan(ctx, domain: str, modules: str | None, output: str | None):
     config = ctx.obj["config"]
     scan_config = config.get("scan", {})
     output_dir = output or DEFAULT_OUTPUT_DIR
+
+    # Lifecycle 設定：CLI > config > 預設 1800s
+    if timeout is None:
+        timeout = scan_config.get("timeout_seconds", 1800)
+    from cypulse.utils.scan_lifecycle import ScanContext, ScanAborted
+    scan_ctx = ScanContext(timeout_seconds=timeout)
+
+    # SIGALRM handler（Unix；Docker base = Linux 已涵蓋）
+    import signal
+    if scan_ctx.timeout_seconds > 0 and hasattr(signal, "SIGALRM"):
+        def _on_timeout(signum, frame):
+            logger.error("scan_timeout", elapsed=scan_ctx.timeout_seconds)
+            scan_ctx.abort(reason=f"timeout after {scan_ctx.timeout_seconds}s")
+            scan_ctx.cleanup_temp_files()
+        signal.signal(signal.SIGALRM, _on_timeout)
+        signal.alarm(scan_ctx.timeout_seconds)
 
     module_ids = None
     if modules:
@@ -66,6 +86,36 @@ def scan(ctx, domain: str, modules: str | None, output: str | None):
             sys.exit(1)
 
     click.echo(f"[CyPulse] 開始掃描 {domain}...")
+    if scan_ctx.timeout_seconds > 0:
+        click.echo(f"[CyPulse]   全局 timeout: {scan_ctx.timeout_seconds}s")
+
+    try:
+        _execute_scan(
+            domain, scan_config, output_dir, module_ids, scan_ctx, config,
+        )
+    except ScanAborted as e:
+        click.echo(f"\n[CyPulse] 掃描中止：{e}", err=True)
+        scan_ctx.cleanup_temp_files()
+        # 取消未觸發的 alarm
+        if hasattr(signal, "SIGALRM"):
+            signal.alarm(0)
+        # SIGINT → 130, SIGALRM/timeout → 124
+        sys.exit(124 if "timeout" in (scan_ctx.abort_reason or "") else 130)
+    finally:
+        # 確保 alarm 取消（成功完成時）
+        if hasattr(signal, "SIGALRM"):
+            signal.alarm(0)
+
+
+def _execute_scan(
+    domain: str,
+    scan_config: dict,
+    output_dir: str,
+    module_ids: list[str] | None,
+    scan_ctx,  # ScanContext
+    config: dict,
+) -> None:
+    """純粹執行 scan 流程；ScanAborted 由呼叫端處理。"""
     import time as _time
 
     # Phase 1: Discovery（5 個 sub-steps）
