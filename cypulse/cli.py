@@ -43,8 +43,19 @@ def cli(ctx, log_level: str | None, config_path: str):
     "--timeout", default=None, type=int,
     help="掃描全局 timeout（秒）；0 = 無 timeout（預設 1800）",
 )
+@click.option(
+    "--export-logs", "export_logs", default=None, type=click.Path(),
+    help="掃描完成後將整段 log 匯出至此 jsonl 檔（含 scan_id 標識）",
+)
 @click.pass_context
-def scan(ctx, domain: str, modules: str | None, output: str | None, timeout: int | None):
+def scan(
+    ctx,
+    domain: str,
+    modules: str | None,
+    output: str | None,
+    timeout: int | None,
+    export_logs: str | None,
+):
     """對目標 domain 執行完整掃描"""
     try:
         domain = sanitize_domain(domain)
@@ -56,6 +67,17 @@ def scan(ctx, domain: str, modules: str | None, output: str | None, timeout: int
     scan_config = config.get("scan", {})
     output_dir = output or DEFAULT_OUTPUT_DIR
 
+    # 注入 scan_id 到 structlog contextvars（貫穿整個 scan 的 log）
+    import uuid as _uuid
+    scan_id = _uuid.uuid4().hex[:12]
+    structlog.contextvars.clear_contextvars()
+    structlog.contextvars.bind_contextvars(scan_id=scan_id, domain=domain)
+
+    # 若啟用 --export-logs，安裝 in-memory log capture
+    log_buffer: list[dict] | None = None
+    if export_logs:
+        log_buffer = _install_log_capture()
+
     # Lifecycle 設定：CLI > config > 預設 1800s
     if timeout is None:
         timeout = scan_config.get("timeout_seconds", 1800)
@@ -64,6 +86,7 @@ def scan(ctx, domain: str, modules: str | None, output: str | None, timeout: int
         set_active_scan_context, install_sigint_handler,
     )
     scan_ctx = ScanContext(timeout_seconds=timeout)
+    scan_ctx.scan_id = scan_id  # type: ignore[attr-defined]
     set_active_scan_context(scan_ctx)
     install_sigint_handler(scan_ctx)  # 第一次 Ctrl-C → cleanup + abort
 
@@ -119,6 +142,50 @@ def scan(ctx, domain: str, modules: str | None, output: str | None, timeout: int
         if hasattr(signal, "SIGALRM"):
             signal.alarm(0)
         set_active_scan_context(None)
+        # 匯出 log buffer（若有）
+        if export_logs and log_buffer is not None:
+            try:
+                _flush_log_buffer(log_buffer, export_logs, scan_id=scan_id)
+                click.echo(f"[CyPulse] 日誌已匯出至: {export_logs}")
+            except Exception as e:
+                click.echo(f"[CyPulse] 匯出日誌失敗: {e}", err=True)
+        structlog.contextvars.clear_contextvars()
+
+
+def _install_log_capture() -> list[dict]:
+    """安裝 structlog log capture：回傳一個 list，所有後續 log event 會被附加進去。"""
+    buffer: list[dict] = []
+
+    def _capture_processor(logger, method_name, event_dict):
+        # 複製避免共享 reference
+        buffer.append(dict(event_dict))
+        return event_dict
+
+    # 將 capture processor 插入既有 processor 鏈最前面
+    # （在 mask 之後，確保 buffer 也含 mask 結果）
+    cur_processors = structlog.get_config()["processors"]
+    new_processors = list(cur_processors)
+    # 插在 _mask_secrets 之後（若有）；否則插在第一位
+    insert_at = 0
+    for i, p in enumerate(new_processors):
+        if getattr(p, "__name__", "") == "_mask_secrets":
+            insert_at = i + 1
+            break
+    new_processors.insert(insert_at, _capture_processor)
+    structlog.configure(processors=new_processors)
+    return buffer
+
+
+def _flush_log_buffer(buffer: list[dict], path: str, scan_id: str) -> None:
+    """把 capture 的 log events 寫成 jsonl 檔。"""
+    import json
+    from pathlib import Path
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        for event in buffer:
+            # 確保每筆 event 都有 scan_id（若 contextvar 因為 clear 已不在 event_dict）
+            event.setdefault("scan_id", scan_id)
+            f.write(json.dumps(event, ensure_ascii=False, default=str) + "\n")
 
 
 def _execute_scan(
@@ -181,6 +248,8 @@ def _execute_scan(
     from cypulse.scoring.engine import ScoringEngine, save_score
     engine = ScoringEngine()
     score = engine.calculate(findings)
+    # 注入 scan_id（從 ScanContext 取，若有）
+    score.scan_id = getattr(scan_ctx, "scan_id", None)
     save_score(score, scan_dir)
     click.echo(f"[CyPulse]   總分: {score.total}/100 ({score.grade})")
 

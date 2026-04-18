@@ -21,6 +21,8 @@ class Score:
     confidence: float = 1.0
     # 各模組來源覆蓋率 {"M1": 0.6, "M2": 1.0, ...}
     source_coverage: dict[str, float] = field(default_factory=dict)
+    # 掃描唯一 ID（uuid hex 前 12 字），便於跨 log 追溯（見 ADR-008）
+    scan_id: str | None = None
 
     def to_dict(self) -> dict:
         import dataclasses

@@ -86,3 +86,34 @@ class TestMaskSecrets:
         out = _mask_secrets(None, "info", {"token": "abc"})
         # 太短時用 *** 整個遮罩
         assert out["token"] == "***"
+
+
+class TestScanIdContextVar:
+    """Task T：scan_id 注入 structlog contextvars，貫穿整個 scan 的 log。"""
+
+    def test_bind_scan_id_appears_in_log(self, capsys):
+        from cypulse.utils.logging import setup_logging
+        import structlog
+
+        setup_logging("INFO")
+        structlog.contextvars.clear_contextvars()
+        structlog.contextvars.bind_contextvars(scan_id="abc123def456")
+        try:
+            log = structlog.get_logger()
+            log.info("test_event")
+            captured = capsys.readouterr()
+            assert "abc123def456" in captured.out
+        finally:
+            structlog.contextvars.clear_contextvars()
+
+    def test_clear_contextvars_removes_scan_id(self, capsys):
+        from cypulse.utils.logging import setup_logging
+        import structlog
+
+        setup_logging("INFO")
+        structlog.contextvars.bind_contextvars(scan_id="should_not_appear")
+        structlog.contextvars.clear_contextvars()
+        log = structlog.get_logger()
+        log.info("after_clear")
+        captured = capsys.readouterr()
+        assert "should_not_appear" not in captured.out
