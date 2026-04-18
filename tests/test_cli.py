@@ -127,6 +127,62 @@ class TestCLI:
         assert result.exit_code != 0
         assert "M99" in result.output
 
+    def test_report_command_missing_dir(self):
+        """report 子命令對 missing scan_dir 應 exit 1。"""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["report", "/nonexistent/path"])
+        assert result.exit_code == 1
+        assert "not found" in result.output.lower() or "Error" in result.output
+
+    def test_report_command_html_format(self, tmp_path):
+        """report --format html 應從既有 scan_dir 產出 HTML。"""
+        from unittest.mock import patch
+        runner = CliRunner()
+        # 先用 scan 跑一次產生 scan_dir
+        out_dir = tmp_path / "data"
+        with patch("subprocess.run") as mock_run, \
+             patch("requests.get") as mock_get, \
+             patch("cypulse.utils.subprocess.check_tool", return_value=False), \
+             patch("cypulse.analysis.web_security.check_tool", return_value=False), \
+             patch("cypulse.analysis.cloud_exposure.check_tool", return_value=False), \
+             patch("cypulse.discovery.subfinder.check_tool", return_value=False), \
+             patch("cypulse.discovery.amass.check_tool", return_value=False), \
+             patch("cypulse.discovery.dnsx.check_tool", return_value=False), \
+             patch("cypulse.discovery.httpx_tool.check_tool", return_value=False), \
+             patch("cypulse.discovery.naabu.check_tool", return_value=False):
+            mock_run.return_value.stdout = ""
+            mock_run.return_value.returncode = 0
+            mock_get.return_value.status_code = 200
+            mock_get.return_value.json.return_value = {}
+
+            result = runner.invoke(cli, ["scan", "example.com", "--output", str(out_dir)])
+            assert result.exit_code == 0
+        scan_dir = next((out_dir / "example.com").iterdir())
+
+        # 再執行 report
+        result = runner.invoke(cli, ["report", str(scan_dir), "--format", "html"])
+        assert result.exit_code == 0
+        assert "HTML" in result.output
+
+    def test_diff_command_outputs_differences(self, tmp_path):
+        """diff 子命令應顯示兩個 scan_dir 的差異。"""
+        import json as _json
+        runner = CliRunner()
+        old = tmp_path / "old"
+        new = tmp_path / "new"
+        old.mkdir()
+        new.mkdir()
+        for d, total in ((old, 80), (new, 70)):
+            (d / "score.json").write_text(_json.dumps({"total": total, "dimensions": {}}))
+            (d / "findings.json").write_text(
+                _json.dumps({"domain": "x", "modules": []})
+            )
+
+        result = runner.invoke(cli, ["diff", str(old), str(new)])
+        assert result.exit_code == 0
+        # 分數變化、新發現、解除：至少印一筆
+        assert "-10" in result.output or "Score change" in result.output
+
     def test_scan_score_json_includes_scan_id(self, tmp_path):
         """scan 完成後 score.json 應含 scan_id 欄位。"""
         from unittest.mock import patch
