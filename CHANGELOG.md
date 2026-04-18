@@ -4,6 +4,46 @@
 
 ---
 
+## [0.5.0] - 2026-04-19
+
+主軸：**後勤改善 + 安全加固 + DX**（見 [ADR-008](docs/adr/ADR-008-observability-and-secret-masking.md)）。
+
+### Added
+
+- **structlog `_mask_secrets` processor**：自動 mask log 內 `api_key|token|password|secret|webhook|authorization|bearer` 欄位的值
+  - dict / list（cmd args）遞迴處理；長度 > 8 保留前 4 字 + `***`
+  - Defense-in-depth：未來新增模組若不小心 log 到 secret 也會自動 mask
+- **`cypulse/utils/diagnostics.py:format_error()`**：將常見 Exception 分類並回傳「修復建議」
+  - 涵蓋 ImportError(dns)、subprocess.TimeoutExpired、requests.Timeout/ConnectionError、FileNotFoundError(tool)、DiffSchemaError、ScanAborted
+  - CLI scan except 區塊使用，使用者看到的錯誤訊息直接含可行動指令
+- **scan_id contextvar**：CLI scan 開頭 `bind_contextvars(scan_id=uuid12, domain=...)`，所有 log event 自動含這兩個 key
+- **`Score.scan_id`** 新欄位（`default=None`），`score.json` 含此值供跨 log 追溯
+- **`cypulse scan --export-logs PATH`**：scan 結束時將整段 log 匯出為 jsonl（每筆 event 含 scan_id），便於發 issue 附完整脈絡
+- **`cypulse list-modules`**：印 M1–M8 + 名稱 + 權重 + 滿分表格 + 總計驗證
+- **`cypulse scan --dry-run`**：預檢模式：domain 格式 ✓、列模組、檢查工具/API key 可用性，不執行 Phase 1-5
+- **`DiffSchemaError`** + 新/舊 scan 區分處理：
+  - 新 scan 缺必要鍵 → raise（代碼 bug 必須失敗）
+  - 舊 scan 缺鍵 → 回傳含警示 alert 的空 DiffReport（cron 不被拖垮）
+
+### Changed
+
+- `cypulse/automation/diff.py:save_diff` 改用 `safe_write_json`（補 Task F 漏掉的第 6 個寫入點）
+- `cypulse/cli.py scan` 新增 `except Exception` 區塊用 `format_error` 包裝錯誤
+- `pyproject.toml` version 0.4.0 → 0.5.0
+
+### Meta（測試覆蓋率提升）
+
+- 既有 331 + 7 SIT → **356 unit + 7 SIT pass**（+25 unit）
+- `cypulse/cli.py` coverage: **36% → 82%**（+46pp）
+- Overall coverage: 84% → **89%**
+
+### Fixed
+
+- 修復 diff 載入舊版 scan 時靜默回 `{}` 導致所有 finding 被誤判為 resolved 的 bug
+- 修復 `save_diff` 非 atomic 寫入可能在中斷時毀檔的 bug
+
+---
+
 ## [0.4.0] - 2026-04-18
 
 主軸：**實際掃描體驗的可用性 + 韌性強化**（見 [ADR-007](docs/adr/ADR-007-scan-lifecycle-and-progress.md)）。

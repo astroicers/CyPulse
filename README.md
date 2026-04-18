@@ -192,6 +192,7 @@ MIT License
 | [ADR-005](docs/adr/ADR-005-cloud-exposure-module.md) | M8 雲端資產暴露模組設計決策 |
 | [ADR-006](docs/adr/ADR-006-source-resilience-and-confidence.md) | 來源級韌性追蹤與信心分數 |
 | [ADR-007](docs/adr/ADR-007-scan-lifecycle-and-progress.md) | 掃描 Lifecycle + 進度顯示 + Ctrl-C/timeout |
+| [ADR-008](docs/adr/ADR-008-observability-and-secret-masking.md) | 可觀察性、安全 log、CLI DX |
 | [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | 常見問題排查 |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 貢獻指南 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本變更記錄 |
