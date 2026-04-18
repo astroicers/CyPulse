@@ -3,6 +3,7 @@ import json
 import os
 import structlog
 from cypulse.models import DiffItem, DiffReport
+from cypulse.utils.io import safe_write_json
 
 logger = structlog.get_logger()
 
@@ -81,7 +82,7 @@ class DiffEngine:
 
 
 def save_diff(diff_report: DiffReport, scan_dir: str) -> None:
+    """Save diff report (atomic write)."""
     path = os.path.join(scan_dir, "diff.json")
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(diff_report.to_dict(), f, ensure_ascii=False, indent=2)
+    safe_write_json(path, diff_report.to_dict())
     logger.info("diff_saved", path=path)
