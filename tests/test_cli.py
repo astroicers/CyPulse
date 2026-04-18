@@ -84,6 +84,49 @@ class TestCLI:
             data = _json.loads(line)  # 每行是 valid JSON
             assert "scan_id" in data, f"event 缺 scan_id: {data}"
 
+    def test_list_modules_outputs_all(self):
+        """`cypulse list-modules` 應印出所有 M1-M8 + 名稱 + 權重 + 滿分。"""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["list-modules"])
+        assert result.exit_code == 0
+        for mid in ["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8"]:
+            assert mid in result.output, f"{mid} not in output"
+        # 至少出現權重格式（百分比或小數）
+        assert "%" in result.output or "weight" in result.output.lower() or "權重" in result.output
+
+    def test_scan_dry_run_does_not_execute_phases(self):
+        """--dry-run 應顯示要做什麼但不真的呼叫 run_discovery。"""
+        from unittest.mock import patch
+        runner = CliRunner()
+        with patch("cypulse.discovery.pipeline.run_discovery") as mock_run, \
+             patch("cypulse.utils.subprocess.check_tool", return_value=True):
+            result = runner.invoke(cli, ["scan", "example.com", "--dry-run"])
+        assert result.exit_code == 0
+        mock_run.assert_not_called()
+        # 輸出應提示「dry-run」與會執行的模組
+        assert "dry" in result.output.lower() or "預檢" in result.output
+        assert "M1" in result.output or "module" in result.output.lower()
+
+    def test_scan_dry_run_reports_missing_tools(self):
+        """--dry-run 應檢查工具是否安裝，缺少時顯示 missing 清單。"""
+        from unittest.mock import patch
+        runner = CliRunner()
+        with patch("cypulse.utils.subprocess.check_tool", return_value=False):
+            result = runner.invoke(cli, ["scan", "example.com", "--dry-run"])
+        # exit code 0 或 1 都接受（缺工具是 warning 不一定失敗）
+        # 但輸出必須提到「未安裝」「missing」「not installed」之一
+        assert any(
+            kw in result.output.lower() or kw in result.output
+            for kw in ["未安裝", "missing", "not installed"]
+        ), f"dry-run 應警示缺工具: {result.output!r}"
+
+    def test_scan_dry_run_with_invalid_module_still_rejects(self):
+        """--dry-run 也應拒絕無效 module ID。"""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["scan", "example.com", "--modules", "M99", "--dry-run"])
+        assert result.exit_code != 0
+        assert "M99" in result.output
+
     def test_scan_score_json_includes_scan_id(self, tmp_path):
         """scan 完成後 score.json 應含 scan_id 欄位。"""
         from unittest.mock import patch

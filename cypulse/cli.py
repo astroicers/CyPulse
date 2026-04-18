@@ -35,6 +35,26 @@ def cli(ctx, log_level: str | None, config_path: str):
     ctx.obj["config_path"] = config_path
 
 
+@cli.command(name="list-modules")
+def list_modules():
+    """列出所有可用的分析模組與權重。"""
+    from cypulse.scoring.weights import WEIGHTS
+    click.echo("CyPulse 分析模組清單：")
+    click.echo("")
+    click.echo(f"  {'ID':<5}{'名稱':<20}{'權重':<10}{'滿分':<6}")
+    click.echo(f"  {'-'*5}{'-'*20}{'-'*10}{'-'*6}")
+    for mid, info in WEIGHTS.items():
+        # 中文字寬度補正：手動 padding
+        name = info["name"]
+        weight_pct = f"{info['weight'] * 100:.0f}%"
+        max_score = info["max_score"]
+        click.echo(f"  {mid:<5}{name:<18}  {weight_pct:<8}  {max_score}")
+    click.echo("")
+    total_weight = sum(v["weight"] for v in WEIGHTS.values())
+    total_max = sum(v["max_score"] for v in WEIGHTS.values())
+    click.echo(f"  總計: 權重 {total_weight * 100:.0f}%、滿分 {total_max}")
+
+
 @cli.command()
 @click.argument("domain")
 @click.option("--modules", "-m", default=None, help="Comma-separated module list (M1-M8)")
@@ -47,6 +67,10 @@ def cli(ctx, log_level: str | None, config_path: str):
     "--export-logs", "export_logs", default=None, type=click.Path(),
     help="掃描完成後將整段 log 匯出至此 jsonl 檔（含 scan_id 標識）",
 )
+@click.option(
+    "--dry-run", "dry_run", is_flag=True, default=False,
+    help="預檢模式：驗證 domain、列出將執行的模組與工具狀態，但不真的掃描",
+)
 @click.pass_context
 def scan(
     ctx,
@@ -55,6 +79,7 @@ def scan(
     output: str | None,
     timeout: int | None,
     export_logs: str | None,
+    dry_run: bool,
 ):
     """對目標 domain 執行完整掃描"""
     try:
@@ -113,6 +138,10 @@ def scan(
             )
             sys.exit(1)
 
+    if dry_run:
+        _do_dry_run(domain, module_ids, scan_ctx.timeout_seconds, output_dir)
+        sys.exit(0)
+
     click.echo(f"[CyPulse] 開始掃描 {domain}...")
     if scan_ctx.timeout_seconds > 0:
         click.echo(f"[CyPulse]   全局 timeout: {scan_ctx.timeout_seconds}s")
@@ -150,6 +179,54 @@ def scan(
             except Exception as e:
                 click.echo(f"[CyPulse] 匯出日誌失敗: {e}", err=True)
         structlog.contextvars.clear_contextvars()
+
+
+def _do_dry_run(
+    domain: str,
+    module_ids: list[str] | None,
+    timeout_seconds: int,
+    output_dir: str,
+) -> None:
+    """預檢模式：列出將執行的模組與工具狀態，不真的掃描。"""
+    from cypulse.scoring.weights import WEIGHTS
+    from cypulse.utils.subprocess import check_tool
+
+    selected = module_ids or list(WEIGHTS.keys())
+
+    click.echo(f"[CyPulse] dry-run 模式（domain={domain}）")
+    click.echo("")
+    click.echo(f"  目標 domain: {domain}（格式驗證 ✓）")
+    click.echo(f"  輸出目錄: {output_dir}")
+    click.echo(f"  Timeout: {timeout_seconds}s" + ("（無）" if timeout_seconds == 0 else ""))
+    click.echo("")
+    click.echo("  將執行的模組：")
+    for mid in selected:
+        info = WEIGHTS[mid]
+        click.echo(f"    - {mid} {info['name']}（權重 {info['weight'] * 100:.0f}%）")
+    click.echo("")
+
+    # 工具可用性檢查
+    tools_to_check = [
+        "subfinder", "amass", "dnsx", "httpx", "naabu",
+        "nuclei", "nmap", "testssl.sh", "s3scanner",
+    ]
+    missing = [t for t in tools_to_check if not check_tool(t)]
+    if missing:
+        click.echo(f"  ⚠️  工具未安裝（會以 graceful skip 處理）: {missing}")
+    else:
+        click.echo("  所有外部工具皆可用 ✓")
+    click.echo("")
+
+    # API key 檢查
+    import os
+    api_envs = ["ABUSEIPDB_API_KEY", "URLSCAN_API_KEY", "HIBP_API_KEY"]
+    missing_envs = [e for e in api_envs if not os.environ.get(e)]
+    if missing_envs:
+        click.echo(f"  ⚠️  API Key 未設定（對應模組將降級或 skipped）: {missing_envs}")
+    else:
+        click.echo("  所有 API Key 皆已設定 ✓")
+    click.echo("")
+    click.echo("[CyPulse] 預檢完成。移除 --dry-run 即可開始實際掃描。")
 
 
 def _install_log_capture() -> list[dict]:
