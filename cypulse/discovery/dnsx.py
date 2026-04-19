@@ -51,7 +51,8 @@ class DnsxTool(DiscoveryTool):
             except json.JSONDecodeError:
                 continue
 
-        logger.info("dnsx_complete", count=len(results))
+        resolved = sum(1 for r in results if r.get("ip"))
+        logger.info("dnsx_complete", total=len(results), resolved=resolved)
         return results
 
 
