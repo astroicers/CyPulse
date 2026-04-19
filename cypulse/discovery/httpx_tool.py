@@ -15,6 +15,21 @@ _SECURITY_HEADER_NAMES = [
     "permissions-policy",
 ]
 
+_TLS_VERSION_MAP = {
+    "tls10": "TLSv1.0",
+    "tls11": "TLSv1.1",
+    "tls12": "TLSv1.2",
+    "tls13": "TLSv1.3",
+}
+
+
+def _normalize_tls_version(raw) -> str | None:
+    # httpx JSON 輸出為 'tls10'/'tls11'/'tls12'/'tls13'，統一成 'TLSvX.Y'
+    # 供下游 M1 web_security 以字典序比較（"TLSv1.0" < "TLSv1.2"）
+    if not raw:
+        return None
+    return _TLS_VERSION_MAP.get(raw.lower(), raw)
+
 
 def _extract_security_headers(raw_headers: dict) -> dict:
     """從 PD httpx 的 snake_case header dict 提取安全相關 headers。
@@ -75,8 +90,8 @@ class HttpxTool(DiscoveryTool):
                     "url": data.get("url", ""),
                     "http_status": data.get("status_code"),
                     "http_title": data.get("title", ""),
-                    "tls_version": (
-                        data.get("tls", {}).get("version", None)
+                    "tls_version": _normalize_tls_version(
+                        data.get("tls", {}).get("tls_version")
                         if isinstance(data.get("tls"), dict) else None
                     ),
                     "tech": data.get("tech", []),

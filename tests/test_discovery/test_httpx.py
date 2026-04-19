@@ -20,7 +20,7 @@ class TestHttpxTool:
             stdout=(
                 '{"url":"https://www.example.com","status_code":200,'
                 '"title":"Example","input":"www.example.com",'
-                '"tls":{"version":"TLSv1.3"}}\n'
+                '"tls":{"tls_version":"tls13"}}\n'
             )
         )
         tool = HttpxTool()
@@ -28,6 +28,46 @@ class TestHttpxTool:
         assert len(result) == 1
         assert result[0]["http_status"] == 200
         assert result[0]["tls_version"] == "TLSv1.3"
+
+    @patch("subprocess.run")
+    @patch("cypulse.discovery.httpx_tool.check_tool", return_value=True)
+    def test_tls_version_normalization(self, mock_check, mock_run):
+        """httpx 的 tlsXY 格式應正規化為 TLSvX.Y 讓 M1 可做字串比較"""
+        import json
+        cases = [
+            ("tls10", "TLSv1.0"),
+            ("tls11", "TLSv1.1"),
+            ("tls12", "TLSv1.2"),
+            ("tls13", "TLSv1.3"),
+        ]
+        for raw, expected in cases:
+            payload = json.dumps({
+                "url": "https://www.example.com",
+                "status_code": 200,
+                "input": "www.example.com",
+                "tls": {"tls_version": raw},
+            })
+            mock_run.return_value = MagicMock(stdout=payload + "\n")
+            tool = HttpxTool()
+            result = tool.run("www.example.com", {})
+            assert result[0]["tls_version"] == expected, (
+                f"raw={raw} expected={expected} got={result[0]['tls_version']}"
+            )
+
+    @patch("subprocess.run")
+    @patch("cypulse.discovery.httpx_tool.check_tool", return_value=True)
+    def test_tls_version_missing_returns_none(self, mock_check, mock_run):
+        """無 tls 欄位（如純 HTTP）時應回 None"""
+        import json
+        payload = json.dumps({
+            "url": "http://www.example.com",
+            "status_code": 200,
+            "input": "www.example.com",
+        })
+        mock_run.return_value = MagicMock(stdout=payload + "\n")
+        tool = HttpxTool()
+        result = tool.run("www.example.com", {})
+        assert result[0]["tls_version"] is None
 
     @patch("subprocess.run")
     @patch("cypulse.discovery.httpx_tool.check_tool", return_value=True)
