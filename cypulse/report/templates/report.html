@@ -295,14 +295,15 @@
     {% endfor %}
 
     <!-- Deduction Summary -->
-    {% if score.explanations %}
+    {% set real_deductions = score.explanations | selectattr("deduction", "gt", 0) | list %}
+    {% if real_deductions %}
     <h2>扣分明細</h2>
     <table>
         <thead>
             <tr><th>模組</th><th>原因</th><th>扣分</th></tr>
         </thead>
         <tbody>
-            {% for exp in score.explanations %}
+            {% for exp in real_deductions %}
             <tr>
                 <td>{{ exp.module_id }}</td>
                 <td>{{ exp.reason }}</td>

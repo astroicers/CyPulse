@@ -186,6 +186,32 @@ class TestReportGenerator:
         # 不應誤報已成功的來源為失敗
         assert "abuseipdb" not in html or "shodan" in html  # smoke check
 
+    def test_deduction_table_filters_zero_entries(self):
+        """扣分明細表不應顯示 deduction=0 的說明列（屬於 source coverage 警告等）"""
+        assets, findings, _ = self._make_test_data()
+        score = Score(
+            total=80, grade="B", dimensions={"M1": 20, "M2": 15},
+            explanations=[
+                ScoreExplanation(module_id="M1", reason="Missing HSTS", deduction=5),
+                ScoreExplanation(
+                    module_id="M2",
+                    reason="IP 信譽 部分來源未回應（信心 65%，失效來源: greynoise）",
+                    deduction=0,
+                ),
+            ],
+            scan_duration=10.0,
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            gen = ReportGenerator()
+            path = gen.generate_html(score, findings, assets, tmpdir)
+            html = open(path, encoding="utf-8").read()
+        # 實際扣分項應出現
+        assert "Missing HSTS" in html
+        assert ">-5<" in html
+        # 零扣分項不應進扣分明細表格
+        assert "部分來源未回應" not in html.split("<h2>扣分明細</h2>")[1].split("</table>")[0]
+        assert ">-0<" not in html
+
     def test_generate_csv(self):
         assets, findings, score = self._make_test_data()
         with tempfile.TemporaryDirectory() as tmpdir:
