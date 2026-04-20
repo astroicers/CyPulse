@@ -19,6 +19,9 @@ _SOURCE_DEFS = {
 
 
 def _classify_error(exc: BaseException) -> str:
+    from cypulse.utils.http import SourceUnavailable
+    if isinstance(exc, SourceUnavailable):
+        return exc.reason
     if isinstance(exc, requests.Timeout):
         return "timeout"
     if isinstance(exc, requests.RequestException):
