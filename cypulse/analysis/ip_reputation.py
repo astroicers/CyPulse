@@ -3,6 +3,7 @@ import os
 import structlog
 import requests
 from cypulse.analysis.base import AnalysisModule, determine_status
+from cypulse.utils.http import http_get
 from cypulse.models import Assets, ModuleResult, Finding, SourceStatus
 
 logger = structlog.get_logger()
@@ -133,7 +134,7 @@ class IPReputationModule(AnalysisModule):
         """回傳 (findings, error)。error=None 表示成功。"""
         findings: list[Finding] = []
         try:
-            resp = requests.get(
+            resp = http_get(
                 f"https://internetdb.shodan.io/{ip}",
                 headers={"user-agent": "CyPulse"},
                 timeout=10,
@@ -168,7 +169,7 @@ class IPReputationModule(AnalysisModule):
         self, ip: str
     ) -> tuple[Finding | None, str | None]:
         try:
-            resp = requests.get(
+            resp = http_get(
                 f"https://api.greynoise.io/v3/community/{ip}",
                 headers={"user-agent": "CyPulse"},
                 timeout=10,
@@ -218,7 +219,7 @@ class IPReputationModule(AnalysisModule):
         self, ip: str
     ) -> tuple[Finding | None, str | None]:
         try:
-            resp = requests.get(
+            resp = http_get(
                 f"http://ip-api.com/json/{ip}",
                 params={"fields": "status,country,org,as,isp"},
                 headers={"user-agent": "CyPulse"},
@@ -254,7 +255,7 @@ class IPReputationModule(AnalysisModule):
         self, ip: str, api_key: str
     ) -> tuple[Finding | None, str | None]:
         try:
-            resp = requests.get(
+            resp = http_get(
                 "https://api.abuseipdb.com/api/v2/check",
                 headers={"Key": api_key, "Accept": "application/json"},
                 params={"ipAddress": ip, "maxAgeInDays": 90},

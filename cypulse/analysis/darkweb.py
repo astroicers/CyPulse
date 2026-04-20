@@ -2,6 +2,7 @@ from __future__ import annotations
 import structlog
 import requests
 from cypulse.analysis.base import AnalysisModule, determine_status
+from cypulse.utils.http import http_get
 from cypulse.models import Assets, ModuleResult, Finding, SourceStatus
 
 logger = structlog.get_logger()
@@ -139,7 +140,7 @@ class DarkWebModule(AnalysisModule):
     ) -> tuple[list[dict], str | None]:
         """HIBP 公開端點：回傳 (breaches, error)。"""
         try:
-            resp = requests.get(
+            resp = http_get(
                 "https://haveibeenpwned.com/api/v3/breaches",
                 headers={"user-agent": "CyPulse"},
                 timeout=15,
@@ -160,7 +161,7 @@ class DarkWebModule(AnalysisModule):
     ) -> tuple[int, str | None]:
         """ProxyNova COMB：回傳 (leaked_count, error)。"""
         try:
-            resp = requests.get(
+            resp = http_get(
                 "https://api.proxynova.com/comb",
                 params={"query": domain},
                 headers={"user-agent": "CyPulse"},
@@ -178,7 +179,7 @@ class DarkWebModule(AnalysisModule):
     ) -> tuple[int, list[dict], str | None]:
         """LeakCheck Public API：回傳 (count, sources, error)。"""
         try:
-            resp = requests.get(
+            resp = http_get(
                 f"https://leakcheck.io/api/public?check={domain}",
                 headers={"user-agent": "CyPulse"},
                 timeout=15,

@@ -2,7 +2,7 @@ from __future__ import annotations
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import structlog
-import requests
+from cypulse.utils.http import http_get
 
 logger = structlog.get_logger()
 
@@ -23,7 +23,7 @@ def _is_valid_subdomain(sub: str, domain: str) -> bool:
 def query_crtsh(domain: str, timeout: int = 30) -> list[str]:
     """crt.sh Certificate Transparency：查域名的 CT 記錄。"""
     try:
-        resp = requests.get(
+        resp = http_get(
             "https://crt.sh/",
             params={"q": f"%.{domain}", "output": "json"},
             headers={"user-agent": "CyPulse"},
@@ -48,7 +48,7 @@ def query_crtsh(domain: str, timeout: int = 30) -> list[str]:
 def query_hackertarget(domain: str, timeout: int = 15) -> list[str]:
     """HackerTarget：免費 DNS 查詢（CSV 格式）。"""
     try:
-        resp = requests.get(
+        resp = http_get(
             "https://api.hackertarget.com/hostsearch/",
             params={"q": domain},
             headers={"user-agent": "CyPulse"},
@@ -76,7 +76,7 @@ def query_hackertarget(domain: str, timeout: int = 15) -> list[str]:
 def query_subdomain_center(domain: str, timeout: int = 15) -> list[str]:
     """subdomain.center：免費子網域查詢（JSON array）。"""
     try:
-        resp = requests.get(
+        resp = http_get(
             "https://api.subdomain.center/",
             params={"domain": domain},
             headers={"user-agent": "CyPulse"},

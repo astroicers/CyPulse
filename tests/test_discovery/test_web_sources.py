@@ -44,7 +44,7 @@ class TestIsValidSubdomain:
 
 
 class TestQueryCrtsh:
-    @patch("cypulse.discovery.web_sources.requests.get")
+    @patch("cypulse.utils.http.requests.get")
     def test_parses_json(self, mock_get):
         mock_get.return_value = _mock_response(
             json_data=[
@@ -60,19 +60,19 @@ class TestQueryCrtsh:
         # wildcard filtered
         assert "*.example.com" not in result
 
-    @patch("cypulse.discovery.web_sources.requests.get")
+    @patch("cypulse.utils.http.requests.get")
     def test_non_200(self, mock_get):
         mock_get.return_value = _mock_response(status_code=503)
         assert query_crtsh("example.com") == []
 
-    @patch("cypulse.discovery.web_sources.requests.get")
+    @patch("cypulse.utils.http.requests.get")
     def test_exception(self, mock_get):
         mock_get.side_effect = Exception("timeout")
         assert query_crtsh("example.com") == []
 
 
 class TestQueryHackertarget:
-    @patch("cypulse.discovery.web_sources.requests.get")
+    @patch("cypulse.utils.http.requests.get")
     def test_parses_csv(self, mock_get):
         mock_get.return_value = _mock_response(
             text="www.example.com,93.184.216.34\napi.example.com,93.184.216.35"
@@ -81,24 +81,24 @@ class TestQueryHackertarget:
         assert "www.example.com" in result
         assert "api.example.com" in result
 
-    @patch("cypulse.discovery.web_sources.requests.get")
+    @patch("cypulse.utils.http.requests.get")
     def test_error_response(self, mock_get):
         mock_get.return_value = _mock_response(text="error check bread")
         assert query_hackertarget("example.com") == []
 
-    @patch("cypulse.discovery.web_sources.requests.get")
+    @patch("cypulse.utils.http.requests.get")
     def test_empty(self, mock_get):
         mock_get.return_value = _mock_response(text="")
         assert query_hackertarget("example.com") == []
 
-    @patch("cypulse.discovery.web_sources.requests.get")
+    @patch("cypulse.utils.http.requests.get")
     def test_exception(self, mock_get):
         mock_get.side_effect = Exception("connection error")
         assert query_hackertarget("example.com") == []
 
 
 class TestQuerySubdomainCenter:
-    @patch("cypulse.discovery.web_sources.requests.get")
+    @patch("cypulse.utils.http.requests.get")
     def test_parses_json(self, mock_get):
         mock_get.return_value = _mock_response(
             json_data=["www.example.com", "api.example.com", "db.example.com"]
@@ -108,7 +108,7 @@ class TestQuerySubdomainCenter:
         assert "api.example.com" in result
         assert "db.example.com" in result
 
-    @patch("cypulse.discovery.web_sources.requests.get")
+    @patch("cypulse.utils.http.requests.get")
     def test_filters_invalid(self, mock_get):
         mock_get.return_value = _mock_response(
             json_data=[
@@ -121,12 +121,12 @@ class TestQuerySubdomainCenter:
         result = query_subdomain_center("example.com")
         assert result == ["www.example.com"]
 
-    @patch("cypulse.discovery.web_sources.requests.get")
+    @patch("cypulse.utils.http.requests.get")
     def test_non_list_response(self, mock_get):
         mock_get.return_value = _mock_response(json_data={"error": "rate limited"})
         assert query_subdomain_center("example.com") == []
 
-    @patch("cypulse.discovery.web_sources.requests.get")
+    @patch("cypulse.utils.http.requests.get")
     def test_exception(self, mock_get):
         mock_get.side_effect = Exception("dns error")
         assert query_subdomain_center("example.com") == []
