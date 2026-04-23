@@ -191,7 +191,7 @@
 - M3 網路服務安全（高風險埠偵測 / Nmap 服務識別）20%
 - M4 DNS 安全（DNSSEC / Zone Transfer / SPF-DNS 驗證）15%
 - M5 郵件安全（SPF / DKIM / DMARC 完整驗證）10%
-- M6 暗網憑證外洩（LeakCheck 付費 + HIBP 免費 fallback）10%
+- M6 暗網帳號密碼外洩（LeakCheck 付費 + HIBP 免費 fallback）10%
 - M7 偽冒域名偵測（dnstwist 相似域名掃描）5%
 
 **評分引擎（Layer 3）**

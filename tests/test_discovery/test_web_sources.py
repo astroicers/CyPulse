@@ -1,6 +1,7 @@
 from unittest.mock import patch, MagicMock
 from cypulse.discovery.web_sources import (
     query_crtsh,
+    query_crtsh_certificates,
     query_hackertarget,
     query_subdomain_center,
     query_web_sources,
@@ -69,6 +70,36 @@ class TestQueryCrtsh:
     def test_exception(self, mock_get):
         mock_get.side_effect = Exception("timeout")
         assert query_crtsh("example.com") == []
+
+    @patch("cypulse.utils.http.requests.get")
+    def test_html_fallback_when_json_502(self, mock_get):
+        """JSON 回 502 時，應 fallback 到 HTML table 解析（模擬 crt.sh 後端半掛）。"""
+        html_snippet = (
+            "<html><body><TABLE>"
+            '<TR>'
+            '<TD><A href="?id=1234">1234</A></TD>'
+            "<TD>2025-09-01</TD><TD>2025-09-01</TD><TD>2025-12-01</TD>"
+            "<TD>example.com</TD>"
+            "<TD>*.example.com<BR>example.com</TD>"
+            "<TD>C=US, O=Let's Encrypt, CN=E1</TD>"
+            "</TR>"
+            "</TABLE></body></html>"
+        )
+
+        def side_effect(url, **kwargs):
+            params = kwargs.get("params") or {}
+            if params.get("output") == "json":
+                return _mock_response(status_code=502, text="bad gateway")
+            return _mock_response(status_code=200, text=html_snippet)
+
+        mock_get.side_effect = side_effect
+        certs = query_crtsh_certificates("example.com")
+        assert len(certs) == 1
+        assert certs[0]["crt_id"] == "1234"
+        assert certs[0]["common_name"] == "example.com"
+        assert "*.example.com" in certs[0]["sans"]
+        assert "example.com" in certs[0]["sans"]
+        assert "Let" in certs[0]["issuer"]
 
 
 class TestQueryHackertarget:

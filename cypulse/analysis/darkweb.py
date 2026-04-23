@@ -33,7 +33,7 @@ class DarkWebModule(AnalysisModule):
         return "M6"
 
     def module_name(self) -> str:
-        return "暗網憑證外洩"
+        return "暗網帳號密碼外洩"
 
     def run(self, assets: Assets) -> ModuleResult:
         import time
@@ -66,7 +66,9 @@ class DarkWebModule(AnalysisModule):
             score = max(0, score - impact)
 
         # 來源 2: ProxyNova COMB — 查域名 email 是否在外洩資料庫中
-        leaked_count, comb_err = self._check_credential_leaks(assets.domain)
+        leaked_count, leaked_lines, comb_err = self._check_credential_leaks(
+            assets.domain
+        )
         source_errors["comb"] = comb_err
         if leaked_count > 0:
             if leaked_count > 100:
@@ -77,12 +79,12 @@ class DarkWebModule(AnalysisModule):
                 sev, impact = "low", 1
             findings.append(Finding(
                 severity=sev,
-                title=f"發現 {leaked_count} 筆外洩憑證",
+                title=f"發現 {leaked_count} 筆外洩帳號密碼",
                 description=(
-                    f"在公開外洩資料庫中發現 {leaked_count} 筆"
-                    f"與 {assets.domain} 相關的憑證記錄"
+                    f"在公開外洩資料庫（ProxyNova COMB）中發現 {leaked_count} 筆"
+                    f"與 {assets.domain} 相關的帳號密碼記錄"
                 ),
-                evidence=f"{assets.domain}: {leaked_count} credentials",
+                evidence="\n".join(leaked_lines),
                 score_impact=impact,
             ))
             score = max(0, score - impact)
@@ -161,8 +163,13 @@ class DarkWebModule(AnalysisModule):
 
     def _check_credential_leaks(
         self, domain: str
-    ) -> tuple[int, str | None]:
-        """ProxyNova COMB：回傳 (leaked_count, error)。"""
+    ) -> tuple[int, list[str], str | None]:
+        """ProxyNova COMB：回傳 (leaked_count, matched_lines, error)。
+
+        ProxyNova 的 count 是 substring match 全集（最大 10000），含大量與
+        目標 domain 無關的誤報。必須對 lines 做 email suffix 過濾後重新計數。
+        matched_lines 為 email 屬於目標 domain 的原始 `email:password` 行。
+        """
         try:
             resp = http_get(
                 "https://api.proxynova.com/comb",
@@ -171,11 +178,21 @@ class DarkWebModule(AnalysisModule):
                 timeout=15,
             )
             if resp.status_code != 200:
-                return 0, f"http_{resp.status_code}"
-            return resp.json().get("count", 0), None
+                return 0, [], f"http_{resp.status_code}"
+            data = resp.json()
+            lines = data.get("lines", []) or []
+            suffix = f"@{domain.lower()}"
+            matched: list[str] = []
+            for ln in lines:
+                if not isinstance(ln, str):
+                    continue
+                email = ln.split(":", 1)[0].strip().lower()
+                if email.endswith(suffix):
+                    matched.append(ln.strip())
+            return len(matched), matched, None
         except Exception as e:
             logger.warning("comb_check_failed", error=str(e))
-            return 0, _classify_error(e)
+            return 0, [], _classify_error(e)
 
     def _check_leakcheck(
         self, domain: str

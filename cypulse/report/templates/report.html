@@ -52,6 +52,10 @@
 
         .footer { text-align: center; margin-top: 3rem; padding: 1rem; color: #a0aec0; font-size: 0.8rem; border-top: 1px solid #e2e8f0; }
 
+        details.evidence-block { margin: 0.5rem 0 0.25rem 0; border: 1px solid #fed7d7; border-radius: 6px; background: #fffafa; }
+        details.evidence-block summary { padding: 0.4rem 0.75rem; cursor: pointer; font-size: 0.85rem; color: #c53030; font-weight: 600; }
+        details.evidence-block pre { padding: 0.5rem 0.75rem 0.75rem; font-family: monospace; font-size: 0.8rem; white-space: pre-wrap; word-break: break-all; color: #744210; background: transparent; margin: 0; }
+
         details.remediation-block { margin: 0.25rem 0 0.5rem 1rem; border: 1px solid #bee3f8; border-radius: 6px; background: #ebf8ff; }
         details.remediation-block summary { padding: 0.4rem 0.75rem; cursor: pointer; font-size: 0.85rem; color: #2b6cb0; font-weight: 600; }
         details.remediation-block .rem-body { padding: 0.5rem 0.75rem 0.75rem; font-size: 0.85rem; }
@@ -79,9 +83,20 @@
         .coverage-row:last-child { border-bottom: 0; }
         .failed-source { font-family: monospace; background: #fed7d7; color: #c53030; padding: 1px 6px; border-radius: 3px; margin: 0 0.2rem; }
 
+        /* 憑證明細表：欄多、文字長，用固定版面 + 強制換行避免 PDF 截斷 */
+        .cert-table { table-layout: fixed; width: 100%; font-size: 0.72rem; }
+        .cert-table th, .cert-table td { padding: 0.4rem 0.45rem; word-break: break-all; overflow-wrap: anywhere; vertical-align: top; }
+        .cert-table .col-id     { width: 11%; font-family: monospace; }
+        .cert-table .col-date   { width:  8%; }
+        .cert-table .col-cn     { width: 14%; }
+        .cert-table .col-sans   { width: 20%; }
+        .cert-table .col-issuer { width: 31%; font-family: monospace; font-size: 0.7rem; }
+
         @media print {
-            body { padding: 1rem; }
+            body { padding: 1rem; max-width: none; }
             .module-section { break-inside: avoid; }
+            /* 整份報告統一 A4 橫向列印 */
+            @page { size: A4 landscape; margin: 1cm; }
         }
     </style>
 </head>
@@ -226,6 +241,12 @@
                     <td>{{ finding.title }}</td>
                     <td>
                         {{ finding.description }}
+                        {% if finding.evidence and "\n" in finding.evidence %}
+                        <details class="evidence-block">
+                          <summary>展開證據（{{ finding.evidence.split("\n") | length }} 筆）</summary>
+                          <pre>{{ finding.evidence }}</pre>
+                        </details>
+                        {% endif %}
                         {% if finding.title in remediation_map %}
                         {% set rem = remediation_map[finding.title] %}
                         <details class="remediation-block">
@@ -265,6 +286,12 @@
                     <td>{{ finding.title }}</td>
                     <td>
                         {{ finding.description }}
+                        {% if finding.evidence and "\n" in finding.evidence %}
+                        <details class="evidence-block">
+                          <summary>展開證據（{{ finding.evidence.split("\n") | length }} 筆）</summary>
+                          <pre>{{ finding.evidence }}</pre>
+                        </details>
+                        {% endif %}
                         {% if finding.title in remediation_map %}
                         {% set rem = remediation_map[finding.title] %}
                         <details class="remediation-block">
@@ -316,6 +343,12 @@
 
     <!-- Assets Table -->
     <h2>資產清單</h2>
+    <p style="font-size: 0.85rem; color: #718096; margin-bottom: 0.75rem;">
+        本清單彙整自多個被動情資來源（crt.sh、ThreatCrowd、HackerTarget 等）與主動探測（DNS / Port / HTTP）。
+        部分子網域可能因以下原因存在誤差：
+        （1）被動來源回報過但已下線、（2）僅內部 DNS 可解析、（3）已遷移至其他 IP 但舊紀錄未清除。
+        若欄位為「-」代表該項掃描當下無法取得對應資料。
+    </p>
     <table>
         <thead>
             <tr><th>子網域</th><th>IP</th><th>Port</th><th>HTTP</th><th>TLS</th></tr>
@@ -332,6 +365,79 @@
             {% endfor %}
         </tbody>
     </table>
+
+    <!-- Certificate Transparency：統計 + 細項（資訊性，不計入評分） -->
+    {% if assets.certificates %}
+    <div class="cert-section">
+    <h2>相似憑證統計（Certificate Transparency）</h2>
+    <p style="font-size: 0.85rem; color: #718096; margin-bottom: 0.75rem;">
+        以下為公開 CT log（crt.sh）中與 {{ domain }} 相關的憑證記錄，僅供攻擊面參考，不計入評分。
+    </p>
+    <div class="assets-summary" style="grid-template-columns: repeat(4, 1fr);">
+        <div class="stat-card">
+            <div class="stat-value">{{ assets.total_certificates }}</div>
+            <div class="stat-label">憑證總數</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ assets.wildcard_certificates }}</div>
+            <div class="stat-label">Wildcard 憑證</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" style="font-size: 1rem;">
+                {{ assets.latest_certificate.logged_at if assets.latest_certificate else "-" }}
+            </div>
+            <div class="stat-label">最近簽發</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" style="font-size: 1rem;">
+                {{ assets.earliest_certificate.logged_at if assets.earliest_certificate else "-" }}
+            </div>
+            <div class="stat-label">最早紀錄</div>
+        </div>
+    </div>
+    {% if assets.issuer_stats %}
+    <h3>簽發機構 (Issuer) 分布</h3>
+    <table>
+        <thead><tr><th>Issuer</th><th style="width: 80px;">張數</th></tr></thead>
+        <tbody>
+            {% for issuer, count in assets.issuer_stats %}
+            <tr>
+                <td style="font-family: monospace; font-size: 0.85rem;">{{ issuer }}</td>
+                <td>{{ count }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+    <h3>憑證明細</h3>
+    <table class="cert-table">
+        <thead>
+            <tr>
+                <th class="col-id">crt.sh ID</th>
+                <th class="col-date">Logged</th>
+                <th class="col-date">Not Before</th>
+                <th class="col-date">Not After</th>
+                <th class="col-cn">Common Name</th>
+                <th class="col-sans">SANs</th>
+                <th class="col-issuer">Issuer</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for cert in assets.certificates | sort(attribute='logged_at', reverse=True) %}
+            <tr>
+                <td class="col-id">{{ cert.crt_id }}</td>
+                <td class="col-date">{{ cert.logged_at or "-" }}</td>
+                <td class="col-date">{{ cert.not_before or "-" }}</td>
+                <td class="col-date">{{ cert.not_after or "-" }}</td>
+                <td class="col-cn">{{ cert.common_name or "-" }}</td>
+                <td class="col-sans">{{ cert.sans | join(", ") if cert.sans else "-" }}</td>
+                <td class="col-issuer">{{ cert.issuer or "-" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% endif %}
 
     <div class="footer">
         <p>此報告由 CyPulse 自動產生 | {{ timestamp }}</p>
