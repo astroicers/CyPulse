@@ -11,7 +11,7 @@
 
 ## 背景
 
-CyPulse 目標是以 100% 開源免費工具實作完整 EASM 能力（見 ADR-001）。然而 M2（IP 信譽）與 M6（暗網憑證外洩）的最高品質資料源（AbuseIPDB、LeakCheck）需付費 API Key。
+CyPulse 目標是以 100% 開源免費工具實作完整 EASM 能力（見 ADR-001）。然而 M2（IP 信譽）與 M6（暗網帳號密碼外洩）的最高品質資料源（AbuseIPDB、LeakCheck）需付費 API Key。
 
 若強制要求 API Key，會讓零成本使用場景完全無法執行這兩個模組，違背開源免費目標。
 
@@ -29,7 +29,7 @@ CyPulse 目標是以 100% 開源免費工具實作完整 EASM 能力（見 ADR-0
 3. 回傳 partial_result，status="partial"
 ```
 
-### M6 暗網憑證外洩 Fallback 鏈
+### M6 暗網帳號密碼外洩 Fallback 鏈
 
 ```
 1. LeakCheck (付費，LEAKCHECK_API_KEY)

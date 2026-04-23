@@ -4,13 +4,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Callable
 import structlog
-from cypulse.models import Asset, Assets
+from cypulse.models import Asset, Assets, Certificate
 from cypulse.discovery.subfinder import SubfinderTool
 from cypulse.discovery.amass import AmassTool
 from cypulse.discovery.dnsx import resolve_subdomains
 from cypulse.discovery.httpx_tool import HttpxTool
 from cypulse.discovery.naabu import NaabuTool
-from cypulse.discovery.web_sources import query_web_sources
+from cypulse.discovery.web_sources import query_web_sources, query_crtsh_certificates
 from cypulse.utils.io import safe_write_json
 
 logger = structlog.get_logger()
@@ -77,6 +77,26 @@ def run_discovery(
             seen.add(sub)
             all_subdomains.append(sub)
             web_count += 1
+
+    # Step 1c: Certificate Transparency metadata (informational)
+    logger.info("discovery_step", step="ct_certificates")
+    try:
+        cert_records = query_crtsh_certificates(domain)
+    except Exception as e:
+        logger.warning("ct_certificates_failed", error=str(e))
+        cert_records = []
+    certificates: list[Certificate] = [
+        Certificate(
+            crt_id=c.get("crt_id", ""),
+            logged_at=c.get("logged_at", ""),
+            not_before=c.get("not_before", ""),
+            not_after=c.get("not_after", ""),
+            common_name=c.get("common_name", ""),
+            sans=c.get("sans", []),
+            issuer=c.get("issuer", ""),
+        )
+        for c in cert_records
+    ]
 
     # Always include the base domain
     if domain.lower() not in seen:
@@ -150,6 +170,7 @@ def run_discovery(
         domain=domain,
         timestamp=timestamp,
         subdomains=assets_list,
+        certificates=certificates,
     )
 
     logger.info(

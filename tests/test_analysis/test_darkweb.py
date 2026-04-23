@@ -36,11 +36,16 @@ def _mock_hibp_response(breaches: list[dict]) -> MagicMock:
     return mock_resp
 
 
-def _mock_comb_response(count: int) -> MagicMock:
-    """建立 ProxyNova COMB 的 mock response。"""
+def _mock_comb_response(count: int, domain: str = "example.com") -> MagicMock:
+    """建立 ProxyNova COMB 的 mock response。
+
+    `count` 為期望模組實際計入的筆數（已過濾 email @domain suffix 後）。
+    lines 會同步生成 count 筆符合 suffix 的資料，以便模組過濾邏輯能命中。
+    """
+    lines = [f"user{i}@{domain}:pw{i}" for i in range(count)]
     mock_resp = MagicMock()
     mock_resp.status_code = 200
-    mock_resp.json.return_value = {"count": count, "lines": []}
+    mock_resp.json.return_value = {"count": count, "lines": lines}
     return mock_resp
 
 
@@ -185,7 +190,7 @@ class TestDarkWebModule:
         assert result.findings[0].evidence == "EvidenceBreach"
 
     # ------------------------------------------------------------------
-    # 3. ProxyNova COMB — 外洩憑證數量
+    # 3. ProxyNova COMB — 外洩帳號密碼數量
     # ------------------------------------------------------------------
 
     def test_comb_high_count(self, sample_assets):
@@ -198,7 +203,7 @@ class TestDarkWebModule:
         with patch("requests.get", side_effect=[hibp_resp, comb_resp, lc_resp]):
             result = m.run(sample_assets)
 
-        comb_findings = [f for f in result.findings if "外洩憑證" in f.title]
+        comb_findings = [f for f in result.findings if "外洩帳號密碼" in f.title]
         assert len(comb_findings) == 1
         assert comb_findings[0].severity == "high"
         assert comb_findings[0].score_impact == 3
@@ -214,7 +219,7 @@ class TestDarkWebModule:
         with patch("requests.get", side_effect=[hibp_resp, comb_resp, lc_resp]):
             result = m.run(sample_assets)
 
-        comb_findings = [f for f in result.findings if "外洩憑證" in f.title]
+        comb_findings = [f for f in result.findings if "外洩帳號密碼" in f.title]
         assert len(comb_findings) == 1
         assert comb_findings[0].severity == "medium"
         assert comb_findings[0].score_impact == 2
@@ -230,7 +235,7 @@ class TestDarkWebModule:
         with patch("requests.get", side_effect=[hibp_resp, comb_resp, lc_resp]):
             result = m.run(sample_assets)
 
-        comb_findings = [f for f in result.findings if "外洩憑證" in f.title]
+        comb_findings = [f for f in result.findings if "外洩帳號密碼" in f.title]
         assert len(comb_findings) == 1
         assert comb_findings[0].severity == "low"
         assert comb_findings[0].score_impact == 1
@@ -259,7 +264,7 @@ class TestDarkWebModule:
         with patch("requests.get", side_effect=[hibp_resp, comb_resp, lc_resp]):
             result = m.run(sample_assets)
 
-        comb_findings = [f for f in result.findings if "外洩憑證" in f.title]
+        comb_findings = [f for f in result.findings if "外洩帳號密碼" in f.title]
         assert "example.com" in comb_findings[0].description
 
     # ------------------------------------------------------------------
@@ -324,7 +329,7 @@ class TestDarkWebModule:
         # HIBP 是唯一 core source，失敗 → status=error
         assert result.status == "error"
         # 但 COMB（auxiliary）仍正常產出 finding → 細粒度韌性
-        comb_findings = [f for f in result.findings if "外洩憑證" in f.title]
+        comb_findings = [f for f in result.findings if "外洩帳號密碼" in f.title]
         assert len(comb_findings) == 1
         src_by_id = {s.source_id: s for s in result.sources}
         assert src_by_id["hibp"].status == "failed"
@@ -432,27 +437,42 @@ class TestDarkWebModule:
         assert result == []
         assert err is not None
 
-    def test_check_credential_leaks_returns_count(self):
-        """_check_credential_leaks 回傳 (count, None)。"""
+    def test_check_credential_leaks_filters_by_email_suffix(self):
+        """_check_credential_leaks 必須對 lines 做 email suffix 過濾，並帶出原始行。
+
+        ProxyNova 回傳的 count 是 substring match 全集，含大量誤報；
+        真實數量只能從 lines 中「email 結尾為 @domain」的筆數算出。
+        matched_lines 必須保留原始 `email:password` 內容以供報告顯示。
+        """
         m = DarkWebModule()
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        mock_resp.json.return_value = {"count": 42, "lines": []}
+        mock_resp.json.return_value = {
+            "count": 10000,
+            "lines": [
+                "alice@example.com:pw1",
+                "bob@example.com:pw2",
+                "not-related@other.com:pw3",
+                "still-not@mail.ru:pw4",
+            ],
+        }
 
         with patch("requests.get", return_value=mock_resp):
-            count, err = m._check_credential_leaks("example.com")
+            count, matched, err = m._check_credential_leaks("example.com")
 
         assert err is None
-        assert count == 42
+        assert count == 2
+        assert matched == ["alice@example.com:pw1", "bob@example.com:pw2"]
 
     def test_check_credential_leaks_returns_zero_on_exception(self):
-        """_check_credential_leaks 內部例外應回傳 (0, error_str)。"""
+        """_check_credential_leaks 內部例外應回傳 (0, [], error_str)。"""
         m = DarkWebModule()
 
         with patch("requests.get", side_effect=RuntimeError("unexpected")):
-            count, err = m._check_credential_leaks("example.com")
+            count, matched, err = m._check_credential_leaks("example.com")
 
         assert count == 0
+        assert matched == []
         assert err is not None
 
     # ------------------------------------------------------------------
@@ -470,7 +490,7 @@ class TestDarkWebModule:
             result = m.run(sample_assets)
 
         assert result.module_id == "M6"
-        assert result.module_name == "暗網憑證外洩"
+        assert result.module_name == "暗網帳號密碼外洩"
         assert result.max_score == 10
         assert isinstance(result.execution_time, float)
         assert result.execution_time >= 0.0
@@ -484,7 +504,7 @@ class TestDarkWebModule:
             result = m.run(sample_assets)
 
         assert result.module_id == "M6"
-        assert result.module_name == "暗網憑證外洩"
+        assert result.module_name == "暗網帳號密碼外洩"
         assert result.max_score == 10
         assert isinstance(result.execution_time, float)
 
@@ -578,7 +598,7 @@ class TestDarkWebModule:
             result = m.run(sample_assets)
 
         assert result.status == "success"
-        comb_findings = [f for f in result.findings if "外洩憑證" in f.title]
+        comb_findings = [f for f in result.findings if "外洩帳號密碼" in f.title]
         assert len(comb_findings) == 1
         lc_findings = [f for f in result.findings if "LeakCheck" in f.title]
         assert len(lc_findings) == 0
